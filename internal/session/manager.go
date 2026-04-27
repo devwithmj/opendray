@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -24,7 +23,25 @@ const (
 	fanoutBuffer    = 64
 	pumpBufSize     = 4096
 	terminateGrace  = 3 * time.Second
+
+	defaultIdleThreshold = 30 * time.Second
+	defaultIdleInterval  = 5 * time.Second
 )
+
+// ManagerOption mutates Manager defaults; pass to NewManager.
+type ManagerOption func(*Manager)
+
+// WithIdleThreshold sets how long a session must be silent before
+// session.idle fires. Pass 0 to disable idle detection.
+func WithIdleThreshold(d time.Duration) ManagerOption {
+	return func(m *Manager) { m.idleThreshold = d }
+}
+
+// WithIdleInterval sets the idle-detector poll cadence. Lower values
+// improve latency; higher values reduce wakeups.
+func WithIdleInterval(d time.Duration) ManagerOption {
+	return func(m *Manager) { m.idleInterval = d }
+}
 
 // Manager owns the lifecycle of all live sessions in this process.
 // Sessions are persisted in postgres for visibility / audit, but the
@@ -34,6 +51,9 @@ type Manager struct {
 	bus       *eventbus.Hub
 	store     *sessionStore
 	providers ProviderResolver
+
+	idleThreshold time.Duration
+	idleInterval  time.Duration
 
 	mu       sync.RWMutex
 	closed   bool
@@ -55,21 +75,59 @@ type runningSession struct {
 	subsMu sync.Mutex
 	subs   map[chan []byte]struct{}
 
+	activityMu   sync.Mutex
+	lastActivity time.Time
+	isIdle       bool
+
 	endOnce sync.Once
 	endedCh chan struct{}
 }
 
-func NewManager(pool *pgxpool.Pool, bus *eventbus.Hub, providers ProviderResolver, log *slog.Logger) *Manager {
+// markActive records new activity and reports whether the session was
+// previously idle (so the caller can flip state back to running).
+func (rs *runningSession) markActive(t time.Time) bool {
+	rs.activityMu.Lock()
+	defer rs.activityMu.Unlock()
+	rs.lastActivity = t
+	wasIdle := rs.isIdle
+	rs.isIdle = false
+	return wasIdle
+}
+
+// checkIdle returns true if the session has just transitioned from
+// active to idle (silent for >= threshold). Returns false if already
+// idle (so callers fire session.idle once per idle window) or still
+// active.
+func (rs *runningSession) checkIdle(now time.Time, threshold time.Duration) bool {
+	rs.activityMu.Lock()
+	defer rs.activityMu.Unlock()
+	if rs.isIdle {
+		return false
+	}
+	if now.Sub(rs.lastActivity) >= threshold {
+		rs.isIdle = true
+		return true
+	}
+	return false
+}
+
+func NewManager(pool *pgxpool.Pool, bus *eventbus.Hub, providers ProviderResolver, log *slog.Logger, opts ...ManagerOption) *Manager {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Manager{
-		log:       log.With("component", "session"),
-		bus:       bus,
-		store:     newStore(pool),
-		providers: providers,
-		sessions:  make(map[string]*runningSession),
+	m := &Manager{
+		log:           log.With("component", "session"),
+		bus:           bus,
+		store:         newStore(pool),
+		providers:     providers,
+		sessions:      make(map[string]*runningSession),
+		idleThreshold: defaultIdleThreshold,
+		idleInterval:  defaultIdleInterval,
 	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
 }
 
 // Create resolves the provider, spawns a PTY, persists the row, and
@@ -131,12 +189,13 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (Session, error
 	}
 
 	rs := &runningSession{
-		sess:    sess,
-		cmd:     cmd,
-		pty:     ptmx,
-		ring:    NewRing(DefaultRingSize),
-		subs:    make(map[chan []byte]struct{}),
-		endedCh: make(chan struct{}),
+		sess:         sess,
+		cmd:          cmd,
+		pty:          ptmx,
+		ring:         NewRing(DefaultRingSize),
+		subs:         make(map[chan []byte]struct{}),
+		lastActivity: sess.StartedAt,
+		endedCh:      make(chan struct{}),
 	}
 
 	m.mu.Lock()
@@ -146,6 +205,10 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (Session, error
 	m.wg.Add(2)
 	go m.pumpStdout(rs)
 	go m.waitExit(rs)
+	if m.idleThreshold > 0 {
+		m.wg.Add(1)
+		go m.idleWatcher(rs)
+	}
 
 	m.bus.Publish(eventbus.Event{
 		Topic: "session.started",
@@ -156,89 +219,6 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (Session, error
 		},
 	})
 	return sess, nil
-}
-
-func (m *Manager) pumpStdout(rs *runningSession) {
-	defer m.wg.Done()
-	buf := make([]byte, pumpBufSize)
-	for {
-		n, err := rs.pty.Read(buf)
-		if n > 0 {
-			chunk := make([]byte, n)
-			copy(chunk, buf[:n])
-			_, _ = rs.ring.Write(chunk)
-			rs.fanout(chunk)
-		}
-		if err != nil {
-			if !errors.Is(err, io.EOF) {
-				m.log.Debug("pty read closed", "session", rs.sess.ID, "err", err)
-			}
-			return
-		}
-	}
-}
-
-func (m *Manager) waitExit(rs *runningSession) {
-	defer m.wg.Done()
-	err := rs.cmd.Wait()
-	exitCode := 0
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		exitCode = exitErr.ExitCode()
-	} else if err != nil {
-		exitCode = -1
-	}
-
-	rs.endOnce.Do(func() {
-		dbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := m.store.MarkEnded(dbCtx, rs.sess.ID, exitCode); err != nil {
-			m.log.Error("mark session ended", "session", rs.sess.ID, "err", err)
-		}
-
-		now := time.Now().UTC()
-		ec := exitCode
-		rs.sessMu.Lock()
-		rs.sess.State = StateEnded
-		rs.sess.EndedAt = &now
-		rs.sess.ExitCode = &ec
-		rs.sessMu.Unlock()
-
-		_ = rs.pty.Close()
-		rs.closeSubs()
-		close(rs.endedCh)
-
-		m.bus.Publish(eventbus.Event{
-			Topic: "session.ended",
-			Data: map[string]any{
-				"session_id": rs.sess.ID,
-				"exit_code":  exitCode,
-				"ended_at":   now,
-			},
-		})
-	})
-}
-
-func (rs *runningSession) fanout(p []byte) {
-	rs.subsMu.Lock()
-	defer rs.subsMu.Unlock()
-	for ch := range rs.subs {
-		select {
-		case ch <- p:
-		default:
-			// slow subscriber — drop frame; eventbus.subscribers handles
-			// the same pattern.
-		}
-	}
-}
-
-func (rs *runningSession) closeSubs() {
-	rs.subsMu.Lock()
-	defer rs.subsMu.Unlock()
-	for ch := range rs.subs {
-		close(ch)
-		delete(rs.subs, ch)
-	}
 }
 
 func (m *Manager) lookup(id string) *runningSession {
@@ -256,8 +236,29 @@ func (m *Manager) Get(ctx context.Context, id string) (Session, error) {
 	return m.store.Get(ctx, id)
 }
 
+// List returns persisted sessions overlaid with in-memory state for
+// any session still managed in this process. Useful so /sessions
+// reports `idle` even though we don't write that to the DB on every
+// transition.
 func (m *Manager) List(ctx context.Context) ([]Session, error) {
-	return m.store.List(ctx)
+	list, err := m.store.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	m.mu.RLock()
+	inflight := make(map[string]State, len(m.sessions))
+	for id, rs := range m.sessions {
+		rs.sessMu.RLock()
+		inflight[id] = rs.sess.State
+		rs.sessMu.RUnlock()
+	}
+	m.mu.RUnlock()
+	for i, s := range list {
+		if state, ok := inflight[s.ID]; ok {
+			list[i].State = state
+		}
+	}
+	return list, nil
 }
 
 // Terminate sends SIGTERM and waits up to terminateGrace for the
@@ -318,6 +319,9 @@ func (m *Manager) Input(_ context.Context, id string, data []byte) error {
 	if _, err := rs.pty.Write(data); err != nil {
 		return fmt.Errorf("pty write: %w", err)
 	}
+	if rs.markActive(time.Now()) {
+		m.flipBackToRunning(rs)
+	}
 	return nil
 }
 
@@ -351,12 +355,14 @@ func (m *Manager) Subscribe(_ context.Context, id string) (<-chan []byte, func()
 	return ch, unsub, nil
 }
 
-func (m *Manager) Buffer(_ context.Context, id string) ([]byte, error) {
+// Buffer returns ring-buffer bytes since the caller's cursor. Pass
+// since=0 to receive whatever is currently in the ring.
+func (m *Manager) Buffer(_ context.Context, id string, since int64) (Replay, error) {
 	rs := m.lookup(id)
 	if rs == nil {
-		return nil, ErrNotFound
+		return Replay{}, ErrNotFound
 	}
-	return rs.ring.Snapshot(), nil
+	return rs.ring.SnapshotSince(since), nil
 }
 
 // Shutdown signals SIGTERM to all live sessions, waits up to 5s, then

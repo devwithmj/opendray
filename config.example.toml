@@ -18,3 +18,11 @@ password = "CHANGEME"
 [log]
 level  = "info"   # debug | info | warn | error
 format = "text"   # text | json
+
+[session]
+# Idle detector: a session that emits no stdout for `idle_threshold`
+# transitions to state=idle and a session.idle event fires (once per
+# idle window). The detector polls every `idle_interval`. Both empty =
+# manager defaults (30s / 5s).
+idle_threshold = "30s"
+idle_interval  = "5s"

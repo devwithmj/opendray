@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/opendray/opendray-v2/internal/audit"
 	"github.com/opendray/opendray-v2/internal/config"
 	"github.com/opendray/opendray-v2/internal/eventbus"
 	"github.com/opendray/opendray-v2/internal/gateway"
@@ -28,6 +29,7 @@ type App struct {
 	store    *store.Store
 	bus      *eventbus.Hub
 	sessions *session.Manager
+	audit    *audit.Sink
 	server   *http.Server
 }
 
@@ -42,13 +44,22 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 
 	bus := eventbus.New(log)
 
+	var sessionOpts []session.ManagerOption
+	if d := cfg.Session.Threshold(); d > 0 {
+		sessionOpts = append(sessionOpts, session.WithIdleThreshold(d))
+	}
+	if d := cfg.Session.Interval(); d > 0 {
+		sessionOpts = append(sessionOpts, session.WithIdleInterval(d))
+	}
 	sessionMgr := session.NewManager(
 		st.Pool(),
 		bus,
 		session.NewDBProviderResolver(st.Pool()),
 		log,
+		sessionOpts...,
 	)
 	sessionHandlers := session.NewHandlers(sessionMgr, log)
+	auditSink := audit.NewSink(st.Pool(), bus, log)
 
 	gw := gateway.NewServer(gateway.Deps{
 		Logger:    log,
@@ -70,6 +81,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		store:    st,
 		bus:      bus,
 		sessions: sessionMgr,
+		audit:    auditSink,
 		server:   srv,
 	}, nil
 }
@@ -79,15 +91,21 @@ func (a *App) Migrate(ctx context.Context) error {
 	return a.store.Migrate(ctx, a.log)
 }
 
-// Run starts the HTTP server and blocks until ctx is cancelled, then
-// performs graceful shutdown in this order:
+// Run starts the HTTP server + audit sink and blocks until ctx is
+// cancelled, then performs graceful shutdown in this order:
 //
-//	HTTP server -> session manager -> event bus -> store
+//	HTTP server -> session manager -> audit sink -> event bus -> store
 func (a *App) Run(ctx context.Context) error {
 	a.log.Info("opendray starting",
 		"listen", a.cfg.Listen,
 		"version", version.Version,
 		"commit", version.Commit)
+
+	auditDone := make(chan struct{})
+	go func() {
+		a.audit.Run(ctx)
+		close(auditDone)
+	}()
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -114,6 +132,13 @@ func (a *App) Run(ctx context.Context) error {
 	if err := a.sessions.Shutdown(shutdownCtx); err != nil {
 		a.log.Error("session shutdown", "err", err)
 	}
+
+	select {
+	case <-auditDone:
+	case <-time.After(5 * time.Second):
+		a.log.Warn("audit shutdown timed out")
+	}
+
 	a.bus.Close()
 	a.store.Close()
 	a.log.Info("opendray stopped")

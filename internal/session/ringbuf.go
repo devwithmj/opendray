@@ -7,8 +7,9 @@ import "sync"
 // each new byte overwrites the oldest. The buffer is safe for
 // concurrent Write/Snapshot use.
 //
-// `written` is a monotonic counter of total bytes ever written, used by
-// M1β resume to express buffer offsets across reconnects.
+// `written` is a monotonic counter of total bytes ever written; clients
+// pass it back as `since` on reconnect to receive only the bytes they
+// missed.
 type RingBuffer struct {
 	mu      sync.Mutex
 	buf     []byte
@@ -16,6 +17,16 @@ type RingBuffer struct {
 	pos     int
 	full    bool
 	written int64
+}
+
+// Replay is the result of SnapshotSince. Start is the absolute offset of
+// Bytes[0]; if Start > the requested `since`, the client lagged the
+// buffer's capacity and (Start - since) bytes were dropped. Written is
+// the new cursor the client should pass on the next call.
+type Replay struct {
+	Bytes   []byte
+	Start   int64
+	Written int64
 }
 
 func NewRing(capacity int) *RingBuffer {
@@ -59,10 +70,45 @@ func (r *RingBuffer) Write(p []byte) (int, error) {
 }
 
 // Snapshot returns the current buffer contents in chronological order.
-// The returned slice is a fresh copy — safe for the caller to retain.
+// Equivalent to SnapshotSince(0).Bytes.
 func (r *RingBuffer) Snapshot() []byte {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return r.snapshotLocked()
+}
+
+// SnapshotSince returns the bytes written after offset `since`. If the
+// caller lagged the ring's capacity, Replay.Start will exceed `since`
+// and (Start - since) bytes have been dropped.
+func (r *RingBuffer) SnapshotSince(since int64) Replay {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	written := r.written
+	var sizeNow int
+	if r.full {
+		sizeNow = r.cap
+	} else {
+		sizeNow = r.pos
+	}
+	minAvail := written - int64(sizeNow)
+
+	start := since
+	if start < minAvail {
+		start = minAvail
+	}
+	if start >= written {
+		return Replay{Start: start, Written: written}
+	}
+
+	all := r.snapshotLocked()
+	skip := start - minAvail
+	out := make([]byte, int64(len(all))-skip)
+	copy(out, all[skip:])
+	return Replay{Bytes: out, Start: start, Written: written}
+}
+
+func (r *RingBuffer) snapshotLocked() []byte {
 	if !r.full {
 		out := make([]byte, r.pos)
 		copy(out, r.buf[:r.pos])

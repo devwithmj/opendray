@@ -84,11 +84,20 @@ func (f *fakeSvc) Subscribe(_ context.Context, id string) (<-chan []byte, func()
 	return f.subCh, func() {}, nil
 }
 
-func (f *fakeSvc) Buffer(_ context.Context, id string) ([]byte, error) {
+func (f *fakeSvc) Buffer(_ context.Context, id string, since int64) (Replay, error) {
 	if _, ok := f.sessions[id]; !ok {
-		return nil, ErrNotFound
+		return Replay{}, ErrNotFound
 	}
-	return []byte("buf"), nil
+	full := []byte("buffered")
+	written := int64(len(full))
+	start := since
+	if start < 0 {
+		start = 0
+	}
+	if start >= written {
+		return Replay{Start: start, Written: written}, nil
+	}
+	return Replay{Bytes: full[start:], Start: start, Written: written}, nil
 }
 
 func newRouter(svc Service) http.Handler {
@@ -223,7 +232,38 @@ func TestBuffer_OctetStream(t *testing.T) {
 	if got := rr.Header().Get("Content-Type"); got != "application/octet-stream" {
 		t.Errorf("content-type=%s", got)
 	}
-	if !bytes.Equal(rr.Body.Bytes(), []byte("buf")) {
+	if !bytes.Equal(rr.Body.Bytes(), []byte("buffered")) {
 		t.Errorf("body=%q", rr.Body.String())
+	}
+	if got := rr.Header().Get("X-OpenDray-Buffer-Cursor"); got != "8" {
+		t.Errorf("cursor header=%q", got)
+	}
+}
+
+func TestBuffer_SinceQuery(t *testing.T) {
+	svc := newFakeSvc()
+	svc.sessions["s1"] = Session{ID: "s1"}
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/sessions/s1/buffer?since=4", nil)
+	newRouter(svc).ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d", rr.Code)
+	}
+	if !bytes.Equal(rr.Body.Bytes(), []byte("ered")) {
+		t.Errorf("body=%q", rr.Body.String())
+	}
+	if got := rr.Header().Get("X-OpenDray-Buffer-Start"); got != "4" {
+		t.Errorf("start header=%q", got)
+	}
+}
+
+func TestBuffer_InvalidSince(t *testing.T) {
+	svc := newFakeSvc()
+	svc.sessions["s1"] = Session{ID: "s1"}
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/sessions/s1/buffer?since=-3", nil)
+	newRouter(svc).ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d", rr.Code)
 	}
 }

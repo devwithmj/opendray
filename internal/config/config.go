@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -16,6 +17,7 @@ type Config struct {
 	Database DatabaseConfig `toml:"database"`
 	Admin    AdminConfig    `toml:"admin"`
 	Log      LogConfig      `toml:"log"`
+	Session  SessionConfig  `toml:"session"`
 }
 
 type DatabaseConfig struct {
@@ -30,6 +32,26 @@ type AdminConfig struct {
 type LogConfig struct {
 	Level  string `toml:"level"`  // debug|info|warn|error
 	Format string `toml:"format"` // json|text
+}
+
+// SessionConfig drives the session.Manager idle detector. Empty values
+// use Manager defaults (30s threshold, 5s poll interval).
+type SessionConfig struct {
+	IdleThreshold string `toml:"idle_threshold"` // e.g. "30s", "2m"
+	IdleInterval  string `toml:"idle_interval"`  // e.g. "5s"
+}
+
+// Threshold parses IdleThreshold; returns 0 if unset or invalid (caller
+// should call Validate first to surface invalid values).
+func (s SessionConfig) Threshold() time.Duration {
+	d, _ := time.ParseDuration(s.IdleThreshold)
+	return d
+}
+
+// Interval parses IdleInterval; returns 0 if unset.
+func (s SessionConfig) Interval() time.Duration {
+	d, _ := time.ParseDuration(s.IdleInterval)
+	return d
 }
 
 func defaults() Config {
@@ -74,6 +96,12 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("OPENDRAY_LOG_FORMAT"); v != "" {
 		cfg.Log.Format = v
 	}
+	if v := os.Getenv("OPENDRAY_SESSION_IDLE_THRESHOLD"); v != "" {
+		cfg.Session.IdleThreshold = v
+	}
+	if v := os.Getenv("OPENDRAY_SESSION_IDLE_INTERVAL"); v != "" {
+		cfg.Session.IdleInterval = v
+	}
 }
 
 func (c Config) Validate() error {
@@ -82,6 +110,16 @@ func (c Config) Validate() error {
 	}
 	if c.Database.URL == "" {
 		return errors.New("config: database.url is empty (set OPENDRAY_DATABASE_URL or [database].url)")
+	}
+	if c.Session.IdleThreshold != "" {
+		if _, err := time.ParseDuration(c.Session.IdleThreshold); err != nil {
+			return fmt.Errorf("config: session.idle_threshold: %w", err)
+		}
+	}
+	if c.Session.IdleInterval != "" {
+		if _, err := time.ParseDuration(c.Session.IdleInterval); err != nil {
+			return fmt.Errorf("config: session.idle_interval: %w", err)
+		}
 	}
 	return nil
 }

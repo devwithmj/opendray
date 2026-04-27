@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -23,7 +24,7 @@ type Service interface {
 	Input(ctx context.Context, id string, data []byte) error
 	Resize(ctx context.Context, id string, cols, rows uint16) error
 	Subscribe(ctx context.Context, id string) (<-chan []byte, func(), error)
-	Buffer(ctx context.Context, id string) ([]byte, error)
+	Buffer(ctx context.Context, id string, since int64) (Replay, error)
 }
 
 type Handlers struct {
@@ -143,14 +144,25 @@ func (h *Handlers) resize(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) buffer(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	buf, err := h.svc.Buffer(r.Context(), id)
+	since := int64(0)
+	if v := r.URL.Query().Get("since"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 0 {
+			writeError(w, http.StatusBadRequest, errors.New("invalid since: must be non-negative integer"))
+			return
+		}
+		since = n
+	}
+	rep, err := h.svc.Buffer(r.Context(), id, since)
 	if err != nil {
 		h.respondError(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("X-OpenDray-Buffer-Start", strconv.FormatInt(rep.Start, 10))
+	w.Header().Set("X-OpenDray-Buffer-Cursor", strconv.FormatInt(rep.Written, 10))
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(buf)
+	_, _ = w.Write(rep.Bytes)
 }
 
 func (h *Handlers) stream(w http.ResponseWriter, r *http.Request) {
@@ -170,8 +182,8 @@ func (h *Handlers) stream(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 	defer unsub()
 
-	if buf, err := h.svc.Buffer(r.Context(), id); err == nil && len(buf) > 0 {
-		if err := conn.WriteMessage(websocket.BinaryMessage, buf); err != nil {
+	if rep, err := h.svc.Buffer(r.Context(), id, 0); err == nil && len(rep.Bytes) > 0 {
+		if err := conn.WriteMessage(websocket.BinaryMessage, rep.Bytes); err != nil {
 			return
 		}
 	}
