@@ -1,8 +1,9 @@
 // Package app is opendray's composition root.
 //
-// All subsystems (config -> store -> eventbus -> gateway) are constructed
-// here. Subsystem packages must not import each other through globals;
-// dependencies flow only via constructor parameters wired in this package.
+// All subsystems (config -> store -> eventbus -> session -> gateway) are
+// constructed here. Subsystem packages must not import each other through
+// globals; dependencies flow only via constructor parameters wired in
+// this package.
 package app
 
 import (
@@ -16,16 +17,18 @@ import (
 	"github.com/opendray/opendray-v2/internal/config"
 	"github.com/opendray/opendray-v2/internal/eventbus"
 	"github.com/opendray/opendray-v2/internal/gateway"
+	"github.com/opendray/opendray-v2/internal/session"
 	"github.com/opendray/opendray-v2/internal/store"
 	"github.com/opendray/opendray-v2/internal/version"
 )
 
 type App struct {
-	cfg    config.Config
-	log    *slog.Logger
-	store  *store.Store
-	bus    *eventbus.Hub
-	server *http.Server
+	cfg      config.Config
+	log      *slog.Logger
+	store    *store.Store
+	bus      *eventbus.Hub
+	sessions *session.Manager
+	server   *http.Server
 }
 
 // New wires the runtime dependencies but does not start any goroutines.
@@ -39,11 +42,20 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 
 	bus := eventbus.New(log)
 
+	sessionMgr := session.NewManager(
+		st.Pool(),
+		bus,
+		session.NewDBProviderResolver(st.Pool()),
+		log,
+	)
+	sessionHandlers := session.NewHandlers(sessionMgr, log)
+
 	gw := gateway.NewServer(gateway.Deps{
 		Logger:    log,
 		DB:        st,
 		Version:   version.Current(),
 		StartedAt: time.Now(),
+		V1Routes:  sessionHandlers.Mount,
 	})
 
 	srv := &http.Server{
@@ -52,7 +64,14 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	return &App{cfg: cfg, log: log, store: st, bus: bus, server: srv}, nil
+	return &App{
+		cfg:      cfg,
+		log:      log,
+		store:    st,
+		bus:      bus,
+		sessions: sessionMgr,
+		server:   srv,
+	}, nil
 }
 
 // Migrate applies pending DB migrations and returns. Used by `opendray migrate`.
@@ -61,7 +80,9 @@ func (a *App) Migrate(ctx context.Context) error {
 }
 
 // Run starts the HTTP server and blocks until ctx is cancelled, then
-// performs graceful shutdown.
+// performs graceful shutdown in this order:
+//
+//	HTTP server -> session manager -> event bus -> store
 func (a *App) Run(ctx context.Context) error {
 	a.log.Info("opendray starting",
 		"listen", a.cfg.Listen,
@@ -84,10 +105,14 @@ func (a *App) Run(ctx context.Context) error {
 		return err
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
+
 	if err := a.server.Shutdown(shutdownCtx); err != nil {
 		a.log.Error("http shutdown", "err", err)
+	}
+	if err := a.sessions.Shutdown(shutdownCtx); err != nil {
+		a.log.Error("session shutdown", "err", err)
 	}
 	a.bus.Close()
 	a.store.Close()
@@ -100,6 +125,9 @@ func (a *App) Logger() *slog.Logger { return a.log }
 // Close releases resources without waiting on the HTTP server. Use Run for
 // the normal lifecycle; Close is for failure paths after New succeeded.
 func (a *App) Close() {
+	if a.sessions != nil {
+		_ = a.sessions.Shutdown(context.Background())
+	}
 	if a.bus != nil {
 		a.bus.Close()
 	}

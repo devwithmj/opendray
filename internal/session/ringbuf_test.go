@@ -1,0 +1,84 @@
+package session
+
+import (
+	"bytes"
+	"testing"
+)
+
+func TestRingBuffer_PartialFill(t *testing.T) {
+	r := NewRing(10)
+	n, err := r.Write([]byte("hello"))
+	if err != nil || n != 5 {
+		t.Fatalf("Write = %d,%v", n, err)
+	}
+	got := r.Snapshot()
+	if !bytes.Equal(got, []byte("hello")) {
+		t.Errorf("snapshot = %q", got)
+	}
+	if r.BytesWritten() != 5 {
+		t.Errorf("written = %d", r.BytesWritten())
+	}
+}
+
+func TestRingBuffer_ExactFill(t *testing.T) {
+	r := NewRing(5)
+	r.Write([]byte("hello"))
+	got := r.Snapshot()
+	if !bytes.Equal(got, []byte("hello")) {
+		t.Errorf("snapshot = %q", got)
+	}
+}
+
+func TestRingBuffer_Wrap(t *testing.T) {
+	r := NewRing(5)
+	r.Write([]byte("abcde"))
+	r.Write([]byte("fg"))
+	got := r.Snapshot()
+	if !bytes.Equal(got, []byte("cdefg")) {
+		t.Errorf("wrapped snapshot = %q, want cdefg", got)
+	}
+	if r.BytesWritten() != 7 {
+		t.Errorf("written = %d", r.BytesWritten())
+	}
+}
+
+func TestRingBuffer_SingleLargeWrite(t *testing.T) {
+	r := NewRing(5)
+	r.Write([]byte("abcdefghij"))
+	got := r.Snapshot()
+	if !bytes.Equal(got, []byte("fghij")) {
+		t.Errorf("snapshot = %q, want fghij", got)
+	}
+	if r.BytesWritten() != 10 {
+		t.Errorf("written = %d", r.BytesWritten())
+	}
+}
+
+func TestRingBuffer_MultiWriteWrap(t *testing.T) {
+	r := NewRing(4)
+	r.Write([]byte("ab"))
+	r.Write([]byte("cd"))
+	r.Write([]byte("ef"))
+	got := r.Snapshot()
+	if !bytes.Equal(got, []byte("cdef")) {
+		t.Errorf("snapshot = %q, want cdef", got)
+	}
+}
+
+func TestRingBuffer_Empty(t *testing.T) {
+	r := NewRing(10)
+	if got := r.Snapshot(); len(got) != 0 {
+		t.Errorf("empty snapshot = %q", got)
+	}
+}
+
+func TestRingBuffer_NewIDUnique(t *testing.T) {
+	seen := make(map[string]bool)
+	for i := 0; i < 1000; i++ {
+		id := newID()
+		if seen[id] {
+			t.Fatalf("collision at %d: %s", i, id)
+		}
+		seen[id] = true
+	}
+}

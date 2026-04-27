@@ -32,6 +32,11 @@ type Deps struct {
 	DB        Pinger
 	Version   version.Info
 	StartedAt time.Time
+
+	// V1Routes is called with the /api/v1 subrouter so subsystems can
+	// mount themselves without making the gateway package depend on
+	// them. The composition root in internal/app provides this hook.
+	V1Routes func(chi.Router)
 }
 
 // Server is opendray's HTTP server with mounted v1 routes.
@@ -66,6 +71,9 @@ func (s *Server) routes() http.Handler {
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", s.handleHealth)
+		if s.deps.V1Routes != nil {
+			s.deps.V1Routes(r)
+		}
 	})
 
 	return r
