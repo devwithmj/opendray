@@ -1,0 +1,69 @@
+# ── Go ───────────────────────────────────────────────────────
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/bin/
+/dist/
+/coverage.out
+/coverage.html
+go.work
+go.work.sum
+vendor/
+
+# ── Editor / IDE ─────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Local config & secrets ───────────────────────────────────
+.env
+.env.local
+.env.*.local
+config.local.toml
+*.pem
+*.key
+*.crt
+secrets/
+
+# ── Flutter / mobile (apps/mobile/) ──────────────────────────
+app/mobile/.dart_tool/
+app/mobile/.flutter-plugins
+app/mobile/.flutter-plugins-dependencies
+app/mobile/.packages
+app/mobile/.pub-cache/
+app/mobile/.pub/
+app/mobile/build/
+app/mobile/ios/Pods/
+app/mobile/ios/.symlinks/
+app/mobile/ios/Flutter/Flutter.framework
+app/mobile/ios/Flutter/Flutter.podspec
+app/mobile/android/.gradle/
+app/mobile/android/captures/
+app/mobile/android/local.properties
+app/mobile/coverage/
+app/mobile/pubspec.lock
+
+# ── Web (apps/web/) ──────────────────────────────────────────
+app/web/node_modules/
+app/web/dist/
+app/web/.vite/
+app/web/coverage/
+app/web/.next/
+app/web/.nuxt/
+
+# ── SDK ts ───────────────────────────────────────────────────
+sdk-ts/node_modules/
+sdk-ts/dist/
+sdk-ts/coverage/
+
+# ── Tooling caches ───────────────────────────────────────────
+.air.toml
+tmp/
+.cache/
