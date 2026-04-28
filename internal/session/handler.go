@@ -225,6 +225,8 @@ func (h *Handlers) respondError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, err)
 	case errors.Is(err, ErrUnknownProvider):
 		writeError(w, http.StatusBadRequest, err)
+	case errors.Is(err, ErrProviderUnavailable):
+		writeError(w, http.StatusConflict, err)
 	case errors.Is(err, ErrAlreadyEnded):
 		writeError(w, http.StatusConflict, err)
 	default:

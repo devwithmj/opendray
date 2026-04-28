@@ -68,9 +68,10 @@ type ResizeRequest struct {
 // Errors used by the manager and surfaced as HTTP status codes by the
 // handler layer.
 var (
-	ErrNotFound       = errors.New("session not found")
-	ErrAlreadyEnded   = errors.New("session already ended")
-	ErrUnknownProvider = errors.New("unknown provider")
+	ErrNotFound            = errors.New("session not found")
+	ErrAlreadyEnded        = errors.New("session already ended")
+	ErrUnknownProvider     = errors.New("unknown provider")
+	ErrProviderUnavailable = errors.New("provider unavailable")
 )
 
 func newID() string {

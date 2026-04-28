@@ -1,0 +1,73 @@
+{
+  "$schema": "https://opendray.dev/schemas/manifest-v2.json",
+  "id": "codex",
+  "displayName": "Codex CLI",
+  "displayName_zh": "Codex CLI",
+  "description": "OpenAI Codex CLI — agentic coding with sandboxed execution",
+  "description_zh": "OpenAI Codex CLI —— 沙盒执行的智能编码助手",
+  "icon": "🤖",
+  "version": "1.0.0",
+  "kind": "cli",
+  "executable": "codex",
+  "capabilities": {
+    "supportsResume": false,
+    "supportsStream": true,
+    "supportsImages": false,
+    "supportsMcp": true
+  },
+  "configSchema": [
+    {
+      "key": "authType",
+      "label": "Authentication",
+      "label_zh": "认证",
+      "type": "select",
+      "group": "auth",
+      "options": ["env", "custom"],
+      "default": "env",
+      "description": "env = read OPENAI_API_KEY from system; custom = use the key below",
+      "description_zh": "env = 从系统读取 OPENAI_API_KEY；custom = 使用下方自定义密钥"
+    },
+    {
+      "key": "apiKey",
+      "label": "API Key",
+      "label_zh": "API 密钥",
+      "type": "secret",
+      "group": "auth",
+      "envVar": "OPENAI_API_KEY",
+      "placeholder": "sk-...",
+      "dependsOn": "authType",
+      "dependsVal": "custom"
+    },
+    {
+      "key": "approval",
+      "label": "Approval Mode",
+      "label_zh": "审批模式",
+      "type": "select",
+      "group": "runtime",
+      "options": ["suggest", "auto-edit", "full-auto"],
+      "default": "suggest",
+      "cliFlag": "--approval-mode",
+      "cliValue": true,
+      "description": "suggest = ask before changes · auto-edit = auto-apply file edits · full-auto = YOLO mode",
+      "description_zh": "suggest = 修改前询问 · auto-edit = 自动应用文件编辑 · full-auto = 全自动"
+    },
+    {
+      "key": "command",
+      "label": "Command Path",
+      "label_zh": "命令路径",
+      "type": "string",
+      "group": "advanced",
+      "placeholder": "codex"
+    },
+    {
+      "key": "extraArgs",
+      "label": "Extra CLI Args",
+      "label_zh": "额外 CLI 参数",
+      "type": "args",
+      "group": "advanced"
+    }
+  ],
+  "ui": {
+    "activityBar": { "id": "codex", "icon": "🤖", "title": "Codex" }
+  }
+}

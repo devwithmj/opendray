@@ -1,0 +1,84 @@
+{
+  "$schema": "https://opendray.dev/schemas/manifest-v2.json",
+  "id": "gemini",
+  "displayName": "Gemini CLI",
+  "displayName_zh": "Gemini CLI",
+  "description": "Google Gemini CLI — agentic coding with sandbox, multimodal, and Google Search",
+  "description_zh": "Google Gemini CLI —— 支持沙盒、多模态和 Google 搜索的智能编码助手",
+  "icon": "✨",
+  "version": "1.0.0",
+  "kind": "cli",
+  "executable": "gemini",
+  "capabilities": {
+    "supportsResume": false,
+    "supportsStream": true,
+    "supportsImages": true,
+    "supportsMcp": false
+  },
+  "configSchema": [
+    {
+      "key": "authType",
+      "label": "Authentication",
+      "label_zh": "认证",
+      "type": "select",
+      "group": "auth",
+      "options": ["env", "custom"],
+      "default": "env",
+      "description": "env = read GOOGLE_API_KEY from system; custom = use the key below",
+      "description_zh": "env = 从系统读取 GOOGLE_API_KEY；custom = 使用下方自定义密钥"
+    },
+    {
+      "key": "apiKey",
+      "label": "API Key",
+      "label_zh": "API 密钥",
+      "type": "secret",
+      "group": "auth",
+      "envVar": "GOOGLE_API_KEY",
+      "placeholder": "AIza...",
+      "dependsOn": "authType",
+      "dependsVal": "custom"
+    },
+    {
+      "key": "yolo",
+      "label": "YOLO Mode",
+      "label_zh": "YOLO 模式",
+      "type": "boolean",
+      "group": "runtime",
+      "default": false,
+      "cliFlag": "--yolo",
+      "description": "Auto-approve all tool calls — no confirmation prompts",
+      "description_zh": "自动批准所有工具调用 —— 无需确认"
+    },
+    {
+      "key": "sandbox",
+      "label": "Sandbox",
+      "label_zh": "沙盒",
+      "type": "select",
+      "group": "runtime",
+      "options": ["", "none"],
+      "default": "",
+      "cliFlag": "-s",
+      "cliValue": true,
+      "description": "Empty = default sandbox · none = no sandbox",
+      "description_zh": "空 = 默认沙盒 · none = 无沙盒"
+    },
+    {
+      "key": "command",
+      "label": "Command Path",
+      "label_zh": "命令路径",
+      "type": "string",
+      "group": "advanced",
+      "placeholder": "gemini"
+    },
+    {
+      "key": "extraArgs",
+      "label": "Extra CLI Args",
+      "label_zh": "额外 CLI 参数",
+      "type": "args",
+      "group": "advanced"
+    }
+  ],
+  "ui": {
+    "activityBar": { "id": "gemini", "icon": "✨", "title": "Gemini" }
+  }
+}

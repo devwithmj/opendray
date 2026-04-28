@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"time"
 
@@ -113,6 +114,9 @@ func (m *Manager) waitExit(rs *runningSession) {
 
 		_ = rs.pty.Close()
 		rs.closeSubs()
+		if rs.tempDir != "" {
+			_ = os.RemoveAll(rs.tempDir)
+		}
 		close(rs.endedCh)
 
 		m.bus.Publish(eventbus.Event{

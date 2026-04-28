@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -68,9 +70,10 @@ type runningSession struct {
 	sessMu sync.RWMutex
 	sess   Session
 
-	cmd  *exec.Cmd
-	pty  *os.File
-	ring *RingBuffer
+	cmd     *exec.Cmd
+	pty     *os.File
+	ring    *RingBuffer
+	tempDir string // per-session scratch dir, removed on session.ended
 
 	subsMu sync.Mutex
 	subs   map[chan []byte]struct{}
@@ -156,20 +159,42 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (Session, error
 		return Session{}, err
 	}
 
+	sessID := newID()
+	tempDir := filepath.Join(os.TempDir(), "opendray-sess-"+sessID)
+	if err := os.MkdirAll(tempDir, 0o700); err != nil {
+		return Session{}, fmt.Errorf("session tempdir: %w", err)
+	}
+
+	var (
+		extraArgs []string
+		extraEnv  map[string]string
+	)
+	if p.Prepare != nil {
+		out, err := p.Prepare(ctx, sessID, tempDir)
+		if err != nil {
+			_ = os.RemoveAll(tempDir)
+			return Session{}, fmt.Errorf("provider prepare: %w", err)
+		}
+		extraArgs = out.Args
+		extraEnv = out.Env
+	}
+
 	args := append([]string(nil), p.Args...)
+	args = append(args, extraArgs...)
 	args = append(args, req.Args...)
 
 	cmd := exec.Command(p.Executable, args...)
 	cmd.Dir = req.Cwd
-	cmd.Env = os.Environ()
+	cmd.Env = mergeEnv(os.Environ(), extraEnv)
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
+		_ = os.RemoveAll(tempDir)
 		return Session{}, fmt.Errorf("pty.Start: %w", err)
 	}
 
 	sess := Session{
-		ID:         newID(),
+		ID:         sessID,
 		Name:       req.Name,
 		ProviderID: req.ProviderID,
 		Cwd:        req.Cwd,
@@ -185,6 +210,7 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (Session, error
 	if err := m.store.Insert(ctx, sess); err != nil {
 		_ = cmd.Process.Kill()
 		_ = ptmx.Close()
+		_ = os.RemoveAll(tempDir)
 		return Session{}, err
 	}
 
@@ -193,6 +219,7 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (Session, error
 		cmd:          cmd,
 		pty:          ptmx,
 		ring:         NewRing(DefaultRingSize),
+		tempDir:      tempDir,
 		subs:         make(map[chan []byte]struct{}),
 		lastActivity: sess.StartedAt,
 		endedCh:      make(chan struct{}),
@@ -225,6 +252,34 @@ func (m *Manager) lookup(id string) *runningSession {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.sessions[id]
+}
+
+// mergeEnv overlays `overrides` onto a base "K=V" slice. Keys present
+// in both win for `overrides`. Used so PrepareFunc can inject env vars
+// like CODEX_HOME without losing the inherited environment.
+func mergeEnv(base []string, overrides map[string]string) []string {
+	if len(overrides) == 0 {
+		return base
+	}
+	seen := make(map[string]bool, len(overrides))
+	out := make([]string, 0, len(base)+len(overrides))
+	for _, kv := range base {
+		if eq := strings.IndexByte(kv, '='); eq > 0 {
+			key := kv[:eq]
+			if v, ok := overrides[key]; ok {
+				out = append(out, key+"="+v)
+				seen[key] = true
+				continue
+			}
+		}
+		out = append(out, kv)
+	}
+	for k, v := range overrides {
+		if !seen[k] {
+			out = append(out, k+"="+v)
+		}
+	}
+	return out
 }
 
 func (m *Manager) Get(ctx context.Context, id string) (Session, error) {

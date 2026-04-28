@@ -14,7 +14,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/opendray/opendray-v2/internal/audit"
+	"github.com/opendray/opendray-v2/internal/catalog"
 	"github.com/opendray/opendray-v2/internal/config"
 	"github.com/opendray/opendray-v2/internal/eventbus"
 	"github.com/opendray/opendray-v2/internal/gateway"
@@ -44,6 +47,17 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 
 	bus := eventbus.New(log)
 
+	cat, err := catalog.New(st.Pool(), log)
+	if err != nil {
+		st.Close()
+		return nil, err
+	}
+	if err := cat.Sync(ctx); err != nil {
+		st.Close()
+		return nil, err
+	}
+	catalogHandlers := catalog.NewHandlers(cat, log)
+
 	var sessionOpts []session.ManagerOption
 	if d := cfg.Session.Threshold(); d > 0 {
 		sessionOpts = append(sessionOpts, session.WithIdleThreshold(d))
@@ -54,7 +68,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	sessionMgr := session.NewManager(
 		st.Pool(),
 		bus,
-		session.NewDBProviderResolver(st.Pool()),
+		catalog.NewSessionProvider(cat),
 		log,
 		sessionOpts...,
 	)
@@ -66,7 +80,10 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		DB:        st,
 		Version:   version.Current(),
 		StartedAt: time.Now(),
-		V1Routes:  sessionHandlers.Mount,
+		V1Routes: func(r chi.Router) {
+			sessionHandlers.Mount(r)
+			catalogHandlers.Mount(r)
+		},
 	})
 
 	srv := &http.Server{
