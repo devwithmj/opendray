@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/opendray/opendray-v2/internal/audit"
+	"github.com/opendray/opendray-v2/internal/auth"
 	"github.com/opendray/opendray-v2/internal/catalog"
 	"github.com/opendray/opendray-v2/internal/config"
 	"github.com/opendray/opendray-v2/internal/eventbus"
@@ -46,6 +47,9 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	}
 
 	bus := eventbus.New(log)
+
+	authSvc := auth.New(cfg.Admin, bus, log)
+	authHandlers := auth.NewHandlers(authSvc, log)
 
 	cat, err := catalog.New(st.Pool(), log)
 	if err != nil {
@@ -81,8 +85,15 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		Version:   version.Current(),
 		StartedAt: time.Now(),
 		V1Routes: func(r chi.Router) {
-			sessionHandlers.Mount(r)
-			catalogHandlers.Mount(r)
+			// Public: only login. /health stays handled by gateway itself.
+			authHandlers.MountPublic(r)
+			// Protected: bearer token required for everything else.
+			r.Group(func(r chi.Router) {
+				r.Use(authSvc.Middleware)
+				authHandlers.MountProtected(r)
+				sessionHandlers.Mount(r)
+				catalogHandlers.Mount(r)
+			})
 		},
 	})
 

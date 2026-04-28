@@ -27,6 +27,13 @@ type DatabaseConfig struct {
 type AdminConfig struct {
 	User     string `toml:"user"`
 	Password string `toml:"password"`
+	TokenTTL string `toml:"token_ttl"` // e.g. "24h", "12h", "30m"
+}
+
+// Duration parses TokenTTL; returns 0 if unset.
+func (a AdminConfig) Duration() time.Duration {
+	d, _ := time.ParseDuration(a.TokenTTL)
+	return d
 }
 
 type LogConfig struct {
@@ -90,6 +97,9 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("OPENDRAY_ADMIN_PASSWORD"); v != "" {
 		cfg.Admin.Password = v
 	}
+	if v := os.Getenv("OPENDRAY_ADMIN_TOKEN_TTL"); v != "" {
+		cfg.Admin.TokenTTL = v
+	}
 	if v := os.Getenv("OPENDRAY_LOG_LEVEL"); v != "" {
 		cfg.Log.Level = v
 	}
@@ -119,6 +129,11 @@ func (c Config) Validate() error {
 	if c.Session.IdleInterval != "" {
 		if _, err := time.ParseDuration(c.Session.IdleInterval); err != nil {
 			return fmt.Errorf("config: session.idle_interval: %w", err)
+		}
+	}
+	if c.Admin.TokenTTL != "" {
+		if _, err := time.ParseDuration(c.Admin.TokenTTL); err != nil {
+			return fmt.Errorf("config: admin.token_ttl: %w", err)
 		}
 	}
 	return nil

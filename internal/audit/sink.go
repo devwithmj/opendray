@@ -26,6 +26,9 @@ var subscribedPatterns = []string{
 	"session.started",
 	"session.ended",
 	"session.idle",
+	"admin.login_success",
+	"admin.login_failed",
+	"admin.logout",
 }
 
 const subscriberBuffer = 256
@@ -114,6 +117,9 @@ func extractSubject(data any) (kind, id string) {
 	}
 	if v, ok := m["channel_id"].(string); ok {
 		return "channel", v
+	}
+	if v, ok := m["user"].(string); ok {
+		return "admin", v
 	}
 	return "", ""
 }

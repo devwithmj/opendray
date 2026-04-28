@@ -12,8 +12,9 @@ url = "postgres://opendray_user:CHANGEME@192.168.3.88:5432/opendray?sslmode=disa
 
 [admin]
 # Admin auth (single human). Prefer env vars in production.
-user     = "admin"
-password = "CHANGEME"
+user      = "admin"
+password  = "CHANGEME"
+token_ttl = "24h"  # bearer token absolute lifetime; empty = 24h default
 
 [log]
 level  = "info"   # debug | info | warn | error

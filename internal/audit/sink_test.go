@@ -16,6 +16,7 @@ func TestExtractSubject(t *testing.T) {
 		{"session", map[string]any{"session_id": "ses_x"}, "session", "ses_x"},
 		{"integration", map[string]any{"integration_id": "int_y"}, "integration", "int_y"},
 		{"channel", map[string]any{"channel_id": "ch_z"}, "channel", "ch_z"},
+		{"admin", map[string]any{"user": "admin"}, "admin", "admin"},
 		{"none", map[string]any{"foo": "bar"}, "", ""},
 		{"non-map", "string-payload", "", ""},
 		{"nil", nil, "", ""},
@@ -37,7 +38,8 @@ func TestExtractSubject(t *testing.T) {
 func TestSubscribedPatterns_Allowlist(t *testing.T) {
 	for _, p := range subscribedPatterns {
 		switch p {
-		case "session.started", "session.ended", "session.idle":
+		case "session.started", "session.ended", "session.idle",
+			"admin.login_success", "admin.login_failed", "admin.logout":
 		default:
 			t.Errorf("audit subscribes to %q — confirm it is PII-free and update this test", p)
 		}
