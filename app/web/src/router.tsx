@@ -5,11 +5,12 @@ import {
   redirect,
   Outlet,
 } from '@tanstack/react-router'
-import { Cpu, MessageSquare, Plug, Activity, Settings } from 'lucide-react'
+import { Cpu, MessageSquare, Plug, Activity } from 'lucide-react'
 
 import { AppShell } from '@/components/AppShell'
 import { LoginPage } from '@/pages/Login'
 import { SessionsPage } from '@/pages/Sessions'
+import { SettingsPage } from '@/pages/Settings'
 import { Placeholder } from '@/pages/Placeholder'
 import { useAuth } from '@/stores/auth'
 
@@ -98,13 +99,7 @@ const activityRoute = createRoute({
 const settingsRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: '/settings',
-  component: () => (
-    <Placeholder
-      icon={Settings}
-      title="Settings"
-      body="Theme is in the topbar. Account + about arrive in W5."
-    />
-  ),
+  component: SettingsPage,
 })
 
 const routeTree = rootRoute.addChildren([

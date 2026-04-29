@@ -1,3 +1,5 @@
+import { toast } from 'sonner'
+
 import { useAuth } from '@/stores/auth'
 
 export class APIError extends Error {
@@ -39,9 +41,17 @@ export async function api<T = unknown>(
   const res = await fetch(path, { ...options, headers, body })
 
   if (res.status === 401 && !options.skipAuthRedirect) {
+    const wasAuthed = useAuth.getState().isAuthed()
     useAuth.getState().clear()
     if (typeof window !== 'undefined' && !path.endsWith('/auth/login')) {
-      const next = encodeURIComponent(window.location.pathname + window.location.search)
+      if (wasAuthed) {
+        toast.error('Session expired', {
+          description: 'Please sign in again.',
+        })
+      }
+      const next = encodeURIComponent(
+        window.location.pathname + window.location.search,
+      )
       window.location.assign(`/login?next=${next}`)
     }
   }
