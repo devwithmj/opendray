@@ -1,5 +1,5 @@
 import { api } from './api'
-import type { CreateSessionRequest, Provider, Session } from './types'
+import type { CreateSessionRequest, Session } from './types'
 
 export async function listSessions(): Promise<Session[]> {
   const res = await api<{ sessions: Session[] }>('/api/v1/sessions')
@@ -34,7 +34,3 @@ export async function resizeSession(
   })
 }
 
-export async function listProviders(): Promise<Provider[]> {
-  const res = await api<{ providers: Provider[] }>('/api/v1/providers')
-  return res.providers ?? []
-}

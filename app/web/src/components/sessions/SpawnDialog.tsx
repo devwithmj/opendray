@@ -14,7 +14,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { listProviders, createSession } from '@/lib/sessions'
+import { createSession } from '@/lib/sessions'
+import { listProviders } from '@/lib/catalog'
 import type { Session } from '@/lib/types'
 
 interface SpawnDialogProps {

@@ -5,11 +5,14 @@ import {
   redirect,
   Outlet,
 } from '@tanstack/react-router'
-import { Cpu, MessageSquare, Plug, Activity } from 'lucide-react'
+import { Activity } from 'lucide-react'
 
 import { AppShell } from '@/components/AppShell'
 import { LoginPage } from '@/pages/Login'
 import { SessionsPage } from '@/pages/Sessions'
+import { ProvidersPage } from '@/pages/Providers'
+import { ChannelsPage } from '@/pages/Channels'
+import { IntegrationsPage } from '@/pages/Integrations'
 import { SettingsPage } from '@/pages/Settings'
 import { Placeholder } from '@/pages/Placeholder'
 import { useAuth } from '@/stores/auth'
@@ -51,37 +54,19 @@ const sessionsRoute = createRoute({
 const providersRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: '/providers',
-  component: () => (
-    <Placeholder
-      icon={Cpu}
-      title="Providers"
-      body="Catalog list and per-provider config form arrive in W3."
-    />
-  ),
+  component: ProvidersPage,
 })
 
 const channelsRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: '/channels',
-  component: () => (
-    <Placeholder
-      icon={MessageSquare}
-      title="Channels"
-      body="Telegram / Slack channel CRUD and test-send arrive in W3."
-    />
-  ),
+  component: ChannelsPage,
 })
 
 const integrationsRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: '/integrations',
-  component: () => (
-    <Placeholder
-      icon={Plug}
-      title="Integrations"
-      body="Register / rotate-key / reverse-proxy console arrive in W3 + W4."
-    />
-  ),
+  component: IntegrationsPage,
 })
 
 const activityRoute = createRoute({

@@ -1,0 +1,255 @@
+import { useState, useEffect } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Loader2, Save, RotateCcw } from 'lucide-react'
+import { toast } from 'sonner'
+
+import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Badge } from '@/components/ui/badge'
+import { Separator } from '@/components/ui/separator'
+import { ConfigForm } from '@/components/providers/ConfigForm'
+import {
+  listProviders,
+  toggleProvider,
+  updateProviderConfig,
+} from '@/lib/catalog'
+import type { Provider } from '@/lib/types'
+import { cn } from '@/lib/utils'
+
+export function ProvidersPage() {
+  const qc = useQueryClient()
+  const { data: providers, isLoading } = useQuery({
+    queryKey: ['providers'],
+    queryFn: listProviders,
+  })
+
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [draft, setDraft] = useState<Record<string, unknown>>({})
+
+  // Default to first provider.
+  useEffect(() => {
+    if (!selectedId && providers && providers.length > 0) {
+      setSelectedId(providers[0].manifest.id)
+    }
+  }, [providers, selectedId])
+
+  const selected = providers?.find((p) => p.manifest.id === selectedId)
+
+  // Reset draft when selection changes.
+  useEffect(() => {
+    setDraft(selected?.config ?? {})
+  }, [selected?.manifest.id, selected?.manifest_hash])
+
+  const saveConfig = useMutation({
+    mutationFn: ({ id, cfg }: { id: string; cfg: Record<string, unknown> }) =>
+      updateProviderConfig(id, cfg),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['providers'] })
+      toast.success('Provider config saved')
+    },
+    onError: (e: Error) => toast.error('Save failed', { description: e.message }),
+  })
+
+  const toggle = useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      toggleProvider(id, enabled),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['providers'] }),
+    onError: (e: Error) => toast.error('Toggle failed', { description: e.message }),
+  })
+
+  return (
+    <div className="h-full flex">
+      {/* Provider list */}
+      <aside className="w-64 shrink-0 border-r border-border flex flex-col bg-background">
+        <div className="h-9 px-3 flex items-center border-b border-border">
+          <span className="text-[11px] font-semibold uppercase tracking-tight text-muted-foreground">
+            Providers
+          </span>
+          <span className="ml-2 text-[10px] text-muted-foreground/60 font-mono">
+            {providers?.length ?? 0}
+          </span>
+        </div>
+        <ScrollArea className="flex-1">
+          <div className="p-1.5 flex flex-col gap-0.5">
+            {isLoading && (
+              <div className="flex items-center gap-2 px-2 py-3 text-[12px] text-muted-foreground">
+                <Loader2 className="size-3.5 animate-spin" />
+                Loading…
+              </div>
+            )}
+            {(providers ?? []).map((p) => (
+              <button
+                key={p.manifest.id}
+                type="button"
+                onClick={() => setSelectedId(p.manifest.id)}
+                className={cn(
+                  'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-left transition-colors border border-transparent',
+                  selectedId === p.manifest.id
+                    ? 'bg-card border-border'
+                    : 'hover:bg-card/60',
+                )}
+              >
+                <span className="text-base shrink-0">{p.manifest.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[12px] font-medium truncate">
+                      {p.manifest.displayName}
+                    </span>
+                    {!p.enabled && (
+                      <Badge variant="muted">disabled</Badge>
+                    )}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground/70 font-mono truncate">
+                    {p.manifest.executable}
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </ScrollArea>
+      </aside>
+
+      {/* Detail */}
+      {selected ? (
+        <ProviderDetail
+          provider={selected}
+          draft={draft}
+          onChange={setDraft}
+          dirty={JSON.stringify(draft) !== JSON.stringify(selected.config)}
+          saving={saveConfig.isPending}
+          onSave={() =>
+            saveConfig.mutate({ id: selected.manifest.id, cfg: draft })
+          }
+          onReset={() => setDraft(selected.config ?? {})}
+          onToggle={(enabled) =>
+            toggle.mutate({ id: selected.manifest.id, enabled })
+          }
+        />
+      ) : (
+        <div className="flex-1 flex items-center justify-center text-[12px] text-muted-foreground">
+          {isLoading ? '' : 'No provider selected.'}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ProviderDetail({
+  provider,
+  onChange,
+  dirty,
+  saving,
+  onSave,
+  onReset,
+  onToggle,
+}: {
+  provider: Provider
+  draft: Record<string, unknown>
+  onChange: (v: Record<string, unknown>) => void
+  dirty: boolean
+  saving: boolean
+  onSave: () => void
+  onReset: () => void
+  onToggle: (enabled: boolean) => void
+}) {
+  const m = provider.manifest
+  const caps: { key: keyof typeof m.capabilities; label: string }[] = [
+    { key: 'supportsResume', label: 'resume' },
+    { key: 'supportsStream', label: 'stream' },
+    { key: 'supportsImages', label: 'images' },
+    { key: 'supportsMcp', label: 'mcp' },
+  ]
+  return (
+    <main className="flex-1 flex flex-col min-w-0 bg-background">
+      <div className="border-b border-border px-6 py-4 flex items-start gap-4">
+        <span className="text-2xl leading-none mt-1 shrink-0">{m.icon}</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-[16px] font-semibold tracking-tight">
+              {m.displayName}
+            </h1>
+            <Badge variant="outline" className="font-mono normal-case">
+              {m.kind}
+            </Badge>
+            <Badge variant="outline" className="font-mono normal-case">
+              v{m.version}
+            </Badge>
+          </div>
+          <p className="text-[12px] text-muted-foreground mt-1 max-w-[60ch]">
+            {m.description}
+          </p>
+          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+            {caps.map(({ key, label }) =>
+              m.capabilities[key] ? (
+                <Badge key={key} variant="accent">
+                  {label}
+                </Badge>
+              ) : null,
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[11px] text-muted-foreground">
+            {provider.enabled ? 'Enabled' : 'Disabled'}
+          </span>
+          <Switch
+            checked={provider.enabled}
+            onCheckedChange={onToggle}
+            aria-label={`Toggle ${m.displayName}`}
+          />
+        </div>
+      </div>
+
+      <ScrollArea className="flex-1">
+        <div className="px-6 py-6 max-w-[640px]">
+          <h2 className="text-[12px] font-semibold uppercase tracking-wider text-muted-foreground/80 mb-4">
+            Configuration
+          </h2>
+          {m.configSchema && m.configSchema.length > 0 ? (
+            <ConfigForm
+              schema={m.configSchema}
+              initial={provider.config}
+              onChange={onChange}
+            />
+          ) : (
+            <p className="text-[12px] text-muted-foreground italic">
+              This provider has no user-configurable fields.
+            </p>
+          )}
+          <Separator className="my-6" />
+          <div className="text-[10px] text-muted-foreground/70 font-mono">
+            executable: {m.executable}
+            <br />
+            manifest_hash: {provider.manifest_hash}
+          </div>
+        </div>
+      </ScrollArea>
+
+      <div className="border-t border-border px-6 py-3 flex items-center justify-end gap-2 bg-background">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onReset}
+          disabled={!dirty || saving}
+        >
+          <RotateCcw className="size-3.5" />
+          Reset
+        </Button>
+        <Button
+          variant="accent"
+          size="sm"
+          onClick={onSave}
+          disabled={!dirty || saving}
+        >
+          {saving ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Save className="size-3.5" />
+          )}
+          {saving ? 'Saving…' : 'Save changes'}
+        </Button>
+      </div>
+    </main>
+  )
+}
