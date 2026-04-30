@@ -317,7 +317,9 @@ func (m *Manager) List(ctx context.Context) ([]Session, error) {
 }
 
 // Terminate sends SIGTERM and waits up to terminateGrace for the
-// process to exit; if it doesn't, SIGKILL.
+// process to exit; if it doesn't, SIGKILL. For an already-ended
+// session it succeeds as a no-op so callers (e.g. handler.terminate)
+// can chain Delete.
 func (m *Manager) Terminate(ctx context.Context, id string) error {
 	rs := m.lookup(id)
 	if rs == nil {
@@ -326,7 +328,7 @@ func (m *Manager) Terminate(ctx context.Context, id string) error {
 			return err
 		}
 		if sess.State == StateEnded {
-			return ErrAlreadyEnded
+			return nil // already ended; nothing to terminate
 		}
 		return fmt.Errorf("session %s not in manager", id)
 	}
@@ -336,7 +338,7 @@ func (m *Manager) Terminate(ctx context.Context, id string) error {
 	pid := rs.sess.PID
 	rs.sessMu.RUnlock()
 	if state == StateEnded {
-		return ErrAlreadyEnded
+		return nil
 	}
 
 	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
@@ -358,6 +360,24 @@ func (m *Manager) Terminate(ctx context.Context, id string) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// Delete permanently removes a session row from the database and the
+// in-memory map. The caller must ensure the process is no longer
+// running (Terminate first); Delete on a live session refuses.
+func (m *Manager) Delete(ctx context.Context, id string) error {
+	if rs := m.lookup(id); rs != nil {
+		rs.sessMu.RLock()
+		ended := rs.sess.State == StateEnded
+		rs.sessMu.RUnlock()
+		if !ended {
+			return fmt.Errorf("cannot delete a running session — terminate first")
+		}
+		m.mu.Lock()
+		delete(m.sessions, id)
+		m.mu.Unlock()
+	}
+	return m.store.Delete(ctx, id)
 }
 
 func (m *Manager) Input(_ context.Context, id string, data []byte) error {
@@ -390,11 +410,28 @@ func (m *Manager) Resize(_ context.Context, id string, cols, rows uint16) error 
 
 // Subscribe registers a channel that receives every chunk of stdout
 // written after registration. The unsub function is idempotent.
+//
+// Returns ErrAlreadyEnded if the session has already exited — the
+// pump goroutine is gone, so a fresh subscriber would never receive
+// data. Callers should fall back to Buffer() to read the ring
+// snapshot instead of opening a stream.
 func (m *Manager) Subscribe(_ context.Context, id string) (<-chan []byte, func(), error) {
 	rs := m.lookup(id)
 	if rs == nil {
 		return nil, nil, ErrNotFound
 	}
+	select {
+	case <-rs.endedCh:
+		return nil, nil, ErrAlreadyEnded
+	default:
+	}
+	rs.sessMu.RLock()
+	if rs.sess.State == StateEnded {
+		rs.sessMu.RUnlock()
+		return nil, nil, ErrAlreadyEnded
+	}
+	rs.sessMu.RUnlock()
+
 	ch := make(chan []byte, fanoutBuffer)
 	rs.subsMu.Lock()
 	rs.subs[ch] = struct{}{}

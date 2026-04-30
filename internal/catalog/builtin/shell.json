@@ -8,7 +8,7 @@
   "icon": "⬛",
   "version": "1.0.0",
   "kind": "shell",
-  "executable": "/bin/bash",
+  "executable": "$SHELL",
   "capabilities": {
     "supportsResume": false,
     "supportsStream": true,

@@ -3,9 +3,30 @@ package catalog
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/opendray/opendray-v2/internal/session"
 )
+
+// resolveExecutable expands magic tokens in a manifest's executable
+// field. Currently:
+//
+//	$SHELL  → user's interactive shell from env, falling back to /bin/bash.
+//
+// Used so the bundled "shell" provider follows whatever the operator's
+// account is configured for (zsh on modern macOS, bash on Linux, …)
+// instead of always launching /bin/bash.
+func resolveExecutable(raw string) string {
+	switch raw {
+	case "$SHELL":
+		if s := os.Getenv("SHELL"); s != "" {
+			return s
+		}
+		return "/bin/bash"
+	default:
+		return raw
+	}
+}
 
 // SessionProvider adapts Catalog to session.ProviderResolver. The
 // session.Manager owns spawn-time scratch dirs; SessionProvider only
@@ -27,7 +48,9 @@ func (sp *SessionProvider) Resolve(ctx context.Context, id string) (session.Prov
 		return session.ProviderInfo{}, fmt.Errorf("%w: %s is disabled", session.ErrProviderUnavailable, id)
 	}
 
-	exe := p.Manifest.Executable
+	// User config "command" override always wins; otherwise resolve
+	// magic tokens (e.g. "$SHELL") in the manifest's executable.
+	exe := resolveExecutable(p.Manifest.Executable)
 	if v, ok := p.Config["command"].(string); ok && v != "" {
 		exe = v
 	}

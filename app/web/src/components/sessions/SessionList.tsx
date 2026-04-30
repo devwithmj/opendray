@@ -1,10 +1,11 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { listSessions } from '@/lib/sessions'
+import { listSessions, terminateSession } from '@/lib/sessions'
 import type { Session } from '@/lib/types'
 import { useSessionTabs } from '@/stores/sessionTabs'
 import { SessionRow } from './SessionRow'
@@ -23,6 +24,7 @@ function order(a: Session, b: Session): number {
 }
 
 export function SessionList({ onSpawn, onOpen }: SessionListProps) {
+  const qc = useQueryClient()
   const { data: sessions, isLoading } = useQuery({
     queryKey: ['sessions'],
     queryFn: listSessions,
@@ -30,9 +32,31 @@ export function SessionList({ onSpawn, onOpen }: SessionListProps) {
   })
 
   const currentId = useSessionTabs((s) => s.currentId)
+  const closeTab = useSessionTabs((s) => s.close)
   const sorted = (sessions ?? []).slice().sort(order)
   const live = sorted.filter((s) => s.state !== 'ended')
   const ended = sorted.filter((s) => s.state === 'ended')
+
+  const remove = useMutation({
+    mutationFn: (s: Session) => terminateSession(s.id),
+    onMutate: (s) => closeTab(s.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sessions'] })
+    },
+    onError: (err: Error) =>
+      toast.error('Delete failed', { description: err.message }),
+  })
+
+  const handleDelete = (s: Session) => {
+    if (s.state !== 'ended') {
+      if (
+        !confirm(`Terminate and remove ${s.name || s.provider_id}?`)
+      ) {
+        return
+      }
+    }
+    remove.mutate(s)
+  }
 
   return (
     <aside className="w-72 shrink-0 border-r border-border flex flex-col bg-background">
@@ -75,8 +99,7 @@ export function SessionList({ onSpawn, onOpen }: SessionListProps) {
             <div className="px-3 py-6 text-center text-[12px] text-muted-foreground">
               No sessions yet.
               <br />
-              Press{' '}
-              <kbd>⌘N</kbd> to spawn.
+              Press <kbd>⌘N</kbd> to spawn.
             </div>
           )}
           {live.map((s) => (
@@ -85,11 +108,27 @@ export function SessionList({ onSpawn, onOpen }: SessionListProps) {
               session={s}
               active={s.id === currentId}
               onClick={() => onOpen(s)}
+              onDelete={() => handleDelete(s)}
             />
           ))}
-          {ended.length > 0 && live.length > 0 && (
-            <div className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground/60 mt-1">
-              Ended
+          {ended.length > 0 && (
+            <div className="px-2 py-1.5 mt-1 flex items-center justify-between gap-2">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">
+                Ended ({ended.length})
+              </span>
+              {ended.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!confirm(`Remove all ${ended.length} ended sessions?`))
+                      return
+                    ended.forEach((s) => remove.mutate(s))
+                  }}
+                  className="text-[10px] text-muted-foreground/70 hover:text-destructive transition-colors"
+                >
+                  Clear all
+                </button>
+              )}
             </div>
           )}
           {ended.map((s) => (
@@ -98,6 +137,7 @@ export function SessionList({ onSpawn, onOpen }: SessionListProps) {
               session={s}
               active={s.id === currentId}
               onClick={() => onOpen(s)}
+              onDelete={() => handleDelete(s)}
             />
           ))}
         </div>

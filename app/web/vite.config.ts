@@ -17,8 +17,19 @@ export default defineConfig(({ command }) => ({
   },
   server: {
     port: 5173,
+    // Bind on all interfaces so the dev server is reachable from
+    // phones / tablets on the LAN during testing. Vite's default
+    // is 'localhost' only.
+    host: true,
     proxy: {
-      '/api': 'http://127.0.0.1:8770',
+      '/api': {
+        target: 'http://127.0.0.1:8770',
+        // ws:true forwards WebSocket upgrades to the Go gateway —
+        // required for the terminal stream and the events viewer.
+        // Without it WS handshakes 502 silently in dev mode.
+        ws: true,
+        changeOrigin: true,
+      },
     },
   },
   build: {

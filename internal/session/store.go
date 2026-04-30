@@ -77,6 +77,19 @@ func (s *sessionStore) MarkEnded(ctx context.Context, id string, exitCode int) e
 	return nil
 }
 
+// Delete permanently removes the row. Caller must ensure the session
+// is no longer running (Manager.Terminate first).
+func (s *sessionStore) Delete(ctx context.Context, id string) error {
+	res, err := s.pool.Exec(ctx, `DELETE FROM sessions WHERE id=$1`, id)
+	if err != nil {
+		return fmt.Errorf("delete session: %w", err)
+	}
+	if res.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 type rowScanner interface {
 	Scan(dest ...any) error
 }

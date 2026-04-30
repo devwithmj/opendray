@@ -1,16 +1,32 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Layers, Plus, Power, Loader2 } from 'lucide-react'
+import {
+  Layers,
+  Plus,
+  Power,
+  Loader2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Keyboard,
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SessionList } from '@/components/sessions/SessionList'
 import { SessionTabs } from '@/components/sessions/SessionTabs'
-import { Terminal } from '@/components/sessions/Terminal'
+import {
+  Terminal,
+  type TerminalHandle,
+} from '@/components/sessions/Terminal'
+import { TerminalToolbar } from '@/components/sessions/TerminalToolbar'
+import { EndedSessionView } from '@/components/sessions/EndedSessionView'
 import { SpawnDialog } from '@/components/sessions/SpawnDialog'
 import { StatePill } from '@/components/sessions/StatePill'
 import { listSessions, terminateSession } from '@/lib/sessions'
 import { useSessionTabs } from '@/stores/sessionTabs'
+import { useLayout } from '@/stores/layout'
+import { cn } from '@/lib/utils'
 import type { Session } from '@/lib/types'
 
 export function SessionsPage() {
@@ -32,12 +48,13 @@ export function SessionsPage() {
 
   const terminate = useMutation({
     mutationFn: terminateSession,
-    onSuccess: () => {
+    onSuccess: (_, id) => {
       qc.invalidateQueries({ queryKey: ['sessions'] })
-      toast.success('Session terminated')
+      close(id)
+      toast.success('Session removed')
     },
     onError: (err: Error) =>
-      toast.error('Terminate failed', { description: err.message }),
+      toast.error('Remove failed', { description: err.message }),
   })
 
   // Reconcile: if a tab's session is gone from server, drop it.
@@ -85,9 +102,18 @@ export function SessionsPage() {
     open({ id: s.id, name: s.name || s.provider_id })
   }
 
+  const listCollapsed = useLayout((s) => s.sessionListCollapsed)
+  const toggleList = useLayout((s) => s.toggleSessionList)
+  const toolbarOpen = useLayout((s) => s.terminalToolbarOpen)
+  const toggleToolbar = useLayout((s) => s.toggleTerminalToolbar)
+
+  const termRef = useRef<TerminalHandle>(null)
+
   return (
     <div className="h-full flex">
-      <SessionList onSpawn={() => setSpawnOpen(true)} onOpen={handleOpen} />
+      {!listCollapsed && (
+        <SessionList onSpawn={() => setSpawnOpen(true)} onOpen={handleOpen} />
+      )}
 
       <div className="flex-1 flex flex-col min-w-0">
         <SessionTabs />
@@ -100,10 +126,27 @@ export function SessionsPage() {
               session={currentSession}
               onTerminate={() => currentId && terminate.mutate(currentId)}
               terminating={terminate.isPending}
+              listCollapsed={listCollapsed}
+              onToggleList={toggleList}
+              toolbarOpen={toolbarOpen}
+              onToggleToolbar={toggleToolbar}
             />
             <div className="flex-1 min-h-0">
-              <Terminal key={currentId} sessionId={currentId} />
+              {currentSession?.state === 'ended' ? (
+                <EndedSessionView key={currentId} sessionId={currentId} />
+              ) : (
+                <Terminal
+                  ref={termRef}
+                  key={currentId}
+                  sessionId={currentId}
+                />
+              )}
             </div>
+            {toolbarOpen && currentSession?.state !== 'ended' && (
+              <TerminalToolbar
+                onKey={(seq) => termRef.current?.sendInput(seq)}
+              />
+            )}
           </>
         )}
       </div>
@@ -140,10 +183,18 @@ function WorkbenchHeader({
   session,
   onTerminate,
   terminating,
+  listCollapsed,
+  onToggleList,
+  toolbarOpen,
+  onToggleToolbar,
 }: {
   session?: Session
   onTerminate: () => void
   terminating: boolean
+  listCollapsed: boolean
+  onToggleList: () => void
+  toolbarOpen: boolean
+  onToggleToolbar: () => void
 }) {
   if (!session) {
     return (
@@ -154,31 +205,75 @@ function WorkbenchHeader({
     )
   }
   return (
-    <div className="h-9 border-b border-border flex items-center px-3 gap-3">
+    <div className="h-9 border-b border-border flex items-center px-3 gap-2">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggleList}
+            aria-label={listCollapsed ? 'Show session list' : 'Hide session list'}
+            className="size-6"
+          >
+            {listCollapsed ? (
+              <PanelLeftOpen className="size-3.5" />
+            ) : (
+              <PanelLeftClose className="size-3.5" />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {listCollapsed ? 'Show session list' : 'Hide session list'}
+        </TooltipContent>
+      </Tooltip>
       <span className="text-[12px] font-medium truncate flex-1">
         {session.name || session.provider_id}
         <span className="text-muted-foreground/70 font-mono ml-2 text-[11px]">
           {session.cwd}
         </span>
       </span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggleToolbar}
+            aria-label={
+              toolbarOpen ? 'Hide on-screen keys' : 'Show on-screen keys'
+            }
+            className={cn('size-6', toolbarOpen && 'text-foreground')}
+          >
+            <Keyboard className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {toolbarOpen
+            ? 'Hide on-screen keys'
+            : 'Show on-screen keys (ESC, TAB, ↑↓, ⌃C…)'}
+        </TooltipContent>
+      </Tooltip>
       <StatePill state={session.state} exitCode={session.exit_code} />
       {session.pid != null && (
         <span className="text-[10px] text-muted-foreground font-mono">
           pid {session.pid}
         </span>
       )}
-      {session.state !== 'ended' && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onTerminate}
-          disabled={terminating}
-          className="text-[11px] gap-1 text-muted-foreground hover:text-destructive"
-        >
-          <Power className="size-3" />
-          {terminating ? 'Terminating…' : 'Terminate'}
-        </Button>
-      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onTerminate}
+        disabled={terminating}
+        className="text-[11px] gap-1 text-muted-foreground hover:text-destructive"
+      >
+        <Power className="size-3" />
+        {terminating
+          ? session.state === 'ended'
+            ? 'Removing…'
+            : 'Terminating…'
+          : session.state === 'ended'
+            ? 'Remove'
+            : 'Terminate'}
+      </Button>
     </div>
   )
 }

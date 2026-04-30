@@ -1,4 +1,9 @@
-import { useEffect, useRef } from 'react'
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+} from 'react'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -11,6 +16,16 @@ import { resizeSession } from '@/lib/sessions'
 
 interface TerminalProps {
   sessionId: string
+}
+
+export interface TerminalHandle {
+  /**
+   * Send a raw byte sequence to the PTY's stdin (e.g. ESC '\x1b',
+   * Ctrl+C '\x03', arrow up '\x1b[A'). Used by the on-screen
+   * keyboard toolbar to forward keys browsers don't send naturally
+   * on touch devices.
+   */
+  sendInput: (data: string) => void
 }
 
 function readVar(name: string): string {
@@ -50,13 +65,30 @@ function buildTheme(applied: 'light' | 'dark') {
   }
 }
 
-export function Terminal({ sessionId }: TerminalProps) {
+export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
+  { sessionId },
+  ref,
+) {
   const containerRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<XTerm | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const wsRef = useRef<BinaryWS | null>(null)
   const token = useAuth((s) => s.token)
   const themeApplied = useTheme((s) => s.applied())
+
+  useImperativeHandle(ref, () => ({
+    sendInput: (data: string) => {
+      const ws = wsRef.current
+      if (!ws || !ws.isOpen()) return
+      const enc = new TextEncoder().encode(data)
+      ws.send(
+        enc.buffer.slice(
+          enc.byteOffset,
+          enc.byteOffset + enc.byteLength,
+        ) as ArrayBuffer,
+      )
+    },
+  }))
 
   // Mount xterm + WS once per session id.
   useEffect(() => {
@@ -142,4 +174,4 @@ export function Terminal({ sessionId }: TerminalProps) {
       <div ref={containerRef} className="h-full w-full p-2" />
     </div>
   )
-}
+})

@@ -32,6 +32,8 @@ export class BinaryWS {
   private closed = false
   private backoff = 500
   private readonly maxBackoff = 8_000
+  private readonly maxRetries = 6
+  private retries = 0
   private timer: ReturnType<typeof setTimeout> | null = null
 
   constructor(url: string, cb: BinaryWSCallbacks = {}) {
@@ -73,6 +75,7 @@ export class BinaryWS {
 
     ws.onopen = () => {
       this.backoff = 500
+      this.retries = 0
       this.cb.onOpen?.()
     }
     ws.onmessage = (ev) => {
@@ -85,9 +88,22 @@ export class BinaryWS {
     ws.onerror = (ev) => {
       this.cb.onError?.(ev)
     }
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
       this.cb.onClose?.()
       if (this.closed) return
+      // Stop retrying for normal / explicit server-side close. The
+      // server uses 1000 (normal) or 1001 (going away); also halt
+      // after maxRetries attempts so a permanently-broken endpoint
+      // doesn't reconnect forever.
+      if (ev.code === 1000 || ev.code === 1001) {
+        this.closed = true
+        return
+      }
+      this.retries++
+      if (this.retries >= this.maxRetries) {
+        this.closed = true
+        return
+      }
       const wait = this.backoff
       this.backoff = Math.min(this.maxBackoff, this.backoff * 2)
       this.timer = setTimeout(() => this.connect(), wait)

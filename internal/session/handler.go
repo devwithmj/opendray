@@ -21,6 +21,7 @@ type Service interface {
 	Get(ctx context.Context, id string) (Session, error)
 	List(ctx context.Context) ([]Session, error)
 	Terminate(ctx context.Context, id string) error
+	Delete(ctx context.Context, id string) error
 	Input(ctx context.Context, id string, data []byte) error
 	Resize(ctx context.Context, id string, cols, rows uint16) error
 	Subscribe(ctx context.Context, id string) (<-chan []byte, func(), error)
@@ -101,9 +102,16 @@ func (h *Handlers) get(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sess)
 }
 
+// terminate handles DELETE /sessions/{id}. The semantics are
+// "remove this row entirely" — running sessions are SIGTERMed first,
+// then the DB row is dropped. Already-ended rows are just deleted.
 func (h *Handlers) terminate(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if err := h.svc.Terminate(r.Context(), id); err != nil {
+		h.respondError(w, err)
+		return
+	}
+	if err := h.svc.Delete(r.Context(), id); err != nil {
 		h.respondError(w, err)
 		return
 	}

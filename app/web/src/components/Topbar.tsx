@@ -7,6 +7,8 @@ import {
   LogOut,
   Search,
   Check,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react'
 
 import { Button } from './ui/button'
@@ -22,6 +24,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import { useTheme, type ThemeMode } from '@/stores/theme'
 import { useAuth } from '@/stores/auth'
+import { useLayout } from '@/stores/layout'
 
 interface TopbarProps {
   onOpenPalette?: () => void
@@ -40,13 +43,35 @@ export function Topbar({ onOpenPalette }: TopbarProps) {
   const expiresAt = useAuth((s) => s.expiresAt)
   const clear = useAuth((s) => s.clear)
   const navigate = useNavigate()
+  const sidebarCollapsed = useLayout((s) => s.sidebarCollapsed)
+  const toggleSidebar = useLayout((s) => s.toggleSidebar)
 
   const ThemeIcon =
     mode === 'dark' ? Moon : mode === 'light' ? Sun : Monitor
 
   return (
     <div className="h-11 border-b border-border bg-background flex items-center px-3 gap-1.5 shrink-0">
-      <div className="flex items-center gap-1.5 px-1">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleSidebar}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="size-7"
+          >
+            {sidebarCollapsed ? (
+              <PanelLeftOpen className="size-3.5" />
+            ) : (
+              <PanelLeftClose className="size-3.5" />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        </TooltipContent>
+      </Tooltip>
+      <div className="flex items-center gap-1.5 pl-1">
         <TerminalIcon
           className="size-3.5 text-accent"
           strokeWidth={2.5}

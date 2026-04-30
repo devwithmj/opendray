@@ -49,6 +49,14 @@ func (f *fakeSvc) List(_ context.Context) ([]Session, error) {
 	return out, nil
 }
 
+func (f *fakeSvc) Delete(_ context.Context, id string) error {
+	if _, ok := f.sessions[id]; !ok {
+		return ErrNotFound
+	}
+	delete(f.sessions, id)
+	return nil
+}
+
 func (f *fakeSvc) Terminate(_ context.Context, id string) error {
 	if f.terminateErr != nil {
 		return f.terminateErr
@@ -56,7 +64,12 @@ func (f *fakeSvc) Terminate(_ context.Context, id string) error {
 	if _, ok := f.sessions[id]; !ok {
 		return ErrNotFound
 	}
-	delete(f.sessions, id)
+	// Real Terminate stops the process; Delete does the row removal.
+	// Mark this row as ended so the Service.Delete path that follows
+	// finds it.
+	s := f.sessions[id]
+	s.State = StateEnded
+	f.sessions[id] = s
 	return nil
 }
 
