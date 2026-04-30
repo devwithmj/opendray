@@ -92,7 +92,14 @@ const routeTree = rootRoute.addChildren([
   ]),
 ])
 
-export const router = createRouter({ routeTree })
+// Strip trailing slash so '/admin/' → '/admin' (router expects no
+// trailing slash). Empty string in dev (BASE_URL='/').
+const basepath = import.meta.env.BASE_URL.replace(/\/$/, '')
+
+export const router = createRouter({
+  routeTree,
+  basepath: basepath || undefined,
+})
 
 declare module '@tanstack/react-router' {
   interface Register {

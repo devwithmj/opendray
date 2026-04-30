@@ -3,7 +3,12 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 
-export default defineConfig({
+// dev mode is served at the root by Vite (proxying /api to the Go
+// gateway). Production builds are embedded into the Go binary and
+// mounted at /admin/, so asset URLs in dist/index.html must resolve
+// under that prefix.
+export default defineConfig(({ command }) => ({
+  base: command === 'build' ? '/admin/' : '/',
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
@@ -16,4 +21,33 @@ export default defineConfig({
       '/api': 'http://127.0.0.1:8770',
     },
   },
-})
+  build: {
+    // Production build feeds the Go binary's embed.FS in
+    // internal/web/dist; the Go side serves it under /admin/*.
+    outDir:
+      command === 'build'
+        ? path.resolve(__dirname, '../../internal/web/dist')
+        : path.resolve(__dirname, 'dist'),
+    emptyOutDir: true,
+    chunkSizeWarningLimit: 1000,
+    rolldownOptions: {
+      output: {
+        // Pull big runtimes out of the entry chunk so the login route +
+        // small admin pages paint fast. SessionsPage's React.lazy()
+        // further splits xterm.js into its own branch.
+        manualChunks(id: string) {
+          if (id.includes('node_modules/@xterm/')) return 'xterm'
+          if (id.includes('node_modules/@tanstack/')) return 'tanstack'
+          if (
+            id.includes('node_modules/react/') ||
+            id.includes('node_modules/react-dom/') ||
+            id.includes('node_modules/scheduler/')
+          ) {
+            return 'react'
+          }
+          return undefined
+        },
+      },
+    },
+  },
+}))

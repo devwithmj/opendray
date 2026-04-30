@@ -19,6 +19,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/opendray/opendray-v2/internal/version"
+	"github.com/opendray/opendray-v2/internal/web"
 )
 
 // Pinger is satisfied by *store.Store. Defined here so gateway/ does not
@@ -74,6 +75,18 @@ func (s *Server) routes() http.Handler {
 		if s.deps.V1Routes != nil {
 			s.deps.V1Routes(r)
 		}
+	})
+
+	// Embedded admin SPA. /admin/* served from internal/web's embed.FS;
+	// the SPA's client-side router (TanStack) handles deep links via
+	// the SPA fallback inside web.Handler. http.StripPrefix removes
+	// the /admin prefix so web.Handler sees relative paths regardless
+	// of chi's internal mount behaviour.
+	r.Mount("/admin", http.StripPrefix("/admin", web.Handler()))
+
+	// Convenience: bare GET / redirects to /admin/.
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/admin/", http.StatusFound)
 	})
 
 	return r

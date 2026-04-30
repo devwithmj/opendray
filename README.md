@@ -1,40 +1,116 @@
-# OpenDray v2
+# opendray v2
 
 > Multiplexer + integration gateway for AI agent CLIs.
-> Mobile / web remote control of Claude Code, Codex, Gemini CLI, and more.
-> Lets your other applications consume one shared subscription instead of paying per-token API.
+> Web remote control of Claude Code, Codex, Gemini, shell sessions.
+> One shared Claude Pro subscription serves the whole personal app
+> ecosystem instead of per-token API billing.
 
-**Status:** Greenfield rewrite. Pre-implementation. See [`docs/design.md`](docs/design.md) for the full plan.
+## Status
 
-## Why v2
+v2 v1.0-rc — Phase 1 (backend) + Phase 2 (web frontend) feature-complete
+on `main`. Mobile + Slack + deploy automation deferred per the
+post-v1.0 roadmap.
 
-v1 lives at `../opendray`. It works, but ~28k lines of plugin infrastructure (bridge / install / marketplace / host sidecar) were built for a third-party plugin economy that never materialised — none of the 16 bundled "plugins" actually use that machinery. v2 starts from the actual product needs and stays small.
+## Quickstart
 
-## Core capabilities (target)
+```bash
+# 1. Postgres on 192.168.3.88 (per CLAUDE.md home-lab conventions).
+#    Credentials live in Vaultwarden item: homelab-db-opendray-v2.
 
-1. **Mobile + web control** of multiple AI agent CLI sessions.
-2. **Subscription cost arbitrage** — one Claude Pro subscription serves the whole personal app ecosystem.
-3. **Multi-CLI orchestration** — claude / codex / gemini in parallel.
-4. **Integration system** — external apps register via reverse proxy + scoped API keys + event WS, no code in this repo.
-5. **Channel hub** — Telegram / Slack / iMessage on a single contract, two-way.
+# 2. Local config — already gitignored.
+cp config.example.toml config.toml
+$EDITOR config.toml          # set [database].url, [admin].password
+
+# 3. Build the web bundle into the embed tree.
+cd app/web && pnpm install && pnpm build && cd ../..
+
+# 4. Apply schema.
+go run ./cmd/opendray migrate -config config.toml
+
+# 5. Run.
+go run ./cmd/opendray serve -config config.toml
+# → REST + WS:  http://127.0.0.1:8770/api/v1/...
+# → Web admin:  http://127.0.0.1:8770/admin/
+```
+
+A single Go binary carries the whole web bundle — no Node runtime
+required at runtime, no separate static-file server, no Caddy/nginx
+needed. Cloudflare Tunnel terminates TLS in front of `:8770`.
+
+## Layout
+
+```
+cmd/opendray/        binary entry point (≤100 LOC per design §14)
+internal/
+├── app/             composition root (wires every subsystem)
+├── audit/           subscribes to bus topics, persists to audit_log
+├── auth/            admin bearer tokens (M2.5)
+├── catalog/         CLI provider manifests + per-id user config (M2)
+├── channel/         channel hub + telegram impl (M4)
+├── config/          TOML loader with OPENDRAY_* env overrides
+├── eventbus/        in-process pub/sub
+├── gateway/         chi HTTP router + middleware + slog
+├── integration/     external-app registry + reverse proxy + events WS (M3)
+├── session/         PTY lifecycle + ring buffer + WS stream (M1)
+├── store/           pgx pool + hand-rolled migration runner (M0)
+├── version/         build-time identification
+└── web/             go:embed of the web bundle (W5)
+
+app/web/             React 19 + TypeScript + Vite SPA (Phase 2 W0-W5)
+docs/
+├── design.md        SSOT north-star
+└── adr/             architecture decisions, dated
+```
+
+## Web frontend
+
+`app/web/` builds a single SPA into `internal/web/dist/`, which the Go
+binary embeds and serves at `/admin/*`. The Vite dev server at `:5173`
+proxies `/api` to `:8770` for HMR-driven development.
+
+```bash
+# dev (hot reload on the React side, separate Go server for the API)
+cd app/web && pnpm dev               # http://localhost:5173
+go run ./cmd/opendray serve -config ../../config.toml   # other terminal
+
+# prod (one binary delivers everything)
+cd app/web && pnpm build              # writes ../../internal/web/dist
+cd ../..
+go build ./cmd/opendray               # bakes dist into the binary
+./opendray serve -config config.toml
+```
+
+See [`app/web/README.md`](app/web/README.md) for the frontend stack
+(React + Vite + Tailwind v4 + shadcn/ui + TanStack Router/Query +
+Zustand + xterm.js) and per-W milestone notes.
 
 ## Documentation
 
-- [`docs/design.md`](docs/design.md) — north-star design (mission, architecture, subsystems, API, data, roadmap)
-- `docs/adr/` — architecture decision records (per-decision, dated)
-- `docs/api.md` — REST + WS reference (generated from code, comes online once gateway scaffolding lands)
-- `docs/integration-guide.md` — how to write an integration that consumes OpenDray
-- `docs/operator-guide.md` — deploy + config
+- [`docs/design.md`](docs/design.md) — mission, architecture, subsystems,
+  API, data model, roadmap
+- [`docs/adr/`](docs/adr/) — every binding architecture decision, dated
+- `docs/api.md` — REST + WS reference (generated, lands post-v1.0)
+- `docs/integration-guide.md` — how to write an integration
+- `docs/operator-guide.md` — deploy + ops
 
-## Status / roadmap snapshot
+## Tests
 
-Pre-M0. Bootstrap scaffolding only. Implementation begins after design doc review.
+```bash
+go test -race ./...        # backend
+cd app/web && pnpm build   # web (TS strict + vite production build)
+```
 
-See [§18 of the design doc](docs/design.md#18-roadmap--milestones) for week-by-week milestones.
+End-to-end smoke flows are tracked in commit messages per milestone.
+Playwright e2e harness lands post-v1.0.
 
 ## Relationship to v1
 
-v1 (`../opendray`) keeps running in production. v2 reaches feature parity before the user-facing switchover. After v2 v1.0 release, v1 is archived for one quarter then retired.
+v1 (`../opendray`) keeps running in production. v2 reaches feature
+parity before the user-facing switchover. After v2 v1.0 release, v1 is
+archived for one quarter, then retired. ADR 0001 documents the
+greenfield decision; ADR 0004 documents which v1 builtins migrate
+(only 4 of 16) and which become client-side / channel / integration
+work in v2.
 
 ## License
 
