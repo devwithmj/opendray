@@ -127,15 +127,20 @@ export function MemoryInspector() {
   return (
     <div className="flex flex-col gap-4">
       {/* Status strip */}
-      <div className="flex items-center gap-3 rounded-md border border-border bg-card/30 px-3 py-2">
-        <Brain className="size-4 text-accent shrink-0" />
-        <div className="flex-1 min-w-0">
+      <div className="flex items-start gap-3 rounded-md border border-border bg-card/30 px-3 py-2">
+        <Brain className="size-4 text-accent shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0 flex flex-col gap-1">
           <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] text-muted-foreground/70 font-medium uppercase tracking-wider">
+              Active embedder
+            </span>
             {statusError ? (
               <Badge variant="danger">unavailable</Badge>
             ) : status ? (
               <>
-                <Badge variant="success">{status.embedder}</Badge>
+                <Badge variant="success" className="font-mono">
+                  {status.embedder}
+                </Badge>
                 <span className="text-[11px] text-muted-foreground">
                   {status.dimensions}-dim · {status.enabled ? 'enabled' : 'disabled'}
                 </span>
@@ -144,6 +149,13 @@ export function MemoryInspector() {
               <span className="text-[11px] text-muted-foreground">probing…</span>
             )}
           </div>
+          <p className="text-[10px] text-muted-foreground/70 leading-snug">
+            This is the embedder the gateway is currently using for every
+            <code className="font-mono mx-1">memory_search</code> /
+            <code className="font-mono mx-1">memory_store</code> call. If this
+            doesn't match the configuration above, you have unsaved changes —
+            click Save then Restart server to apply.
+          </p>
         </div>
         <Button
           type="button"

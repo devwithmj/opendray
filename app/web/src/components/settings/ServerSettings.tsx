@@ -1412,6 +1412,20 @@ function HttpBackendHelpers({
   })
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<ProbeResult | null>(null)
+  // Whatever base_url + api_key produced the current `result` —
+  // when the operator edits either field we drop the result so
+  // the green ✓ doesn't outlive the URL it was actually tested
+  // against (caused real confusion in dogfooding).
+  const [resultFor, setResultFor] = useState<{ url: string; key: string } | null>(null)
+  if (
+    result &&
+    resultFor &&
+    (resultFor.url !== draft.memory.http.base_url ||
+      resultFor.key !== draft.memory.http.api_key)
+  ) {
+    setResult(null)
+    setResultFor(null)
+  }
 
   const presets = [
     { label: 'ollama', url: 'http://localhost:11434/v1', model: 'nomic-embed-text', tip: 'Local ollama daemon' },
@@ -1428,11 +1442,19 @@ function HttpBackendHelpers({
         draft.memory.http.api_key,
       )
       setResult(res)
+      setResultFor({
+        url: draft.memory.http.base_url,
+        key: draft.memory.http.api_key,
+      })
     } catch (err) {
       setResult({
         base_url: draft.memory.http.base_url,
         reachable: false,
         error: (err as Error).message,
+      })
+      setResultFor({
+        url: draft.memory.http.base_url,
+        key: draft.memory.http.api_key,
       })
     } finally {
       setBusy(false)
@@ -1497,12 +1519,26 @@ function HttpBackendHelpers({
         </Button>
       </div>
 
-      {result && <ProbeResultLine res={result} />}
+      {result && (
+        <ProbeResultLine
+          res={result}
+          configuredModel={draft.memory.http.model}
+          onApplyModel={(m) => onApply({ model: m })}
+        />
+      )}
     </div>
   )
 }
 
-function ProbeResultLine({ res }: { res: ProbeResult }) {
+function ProbeResultLine({
+  res,
+  configuredModel,
+  onApplyModel,
+}: {
+  res: ProbeResult
+  configuredModel: string
+  onApplyModel: (m: string) => void
+}) {
   if (!res.reachable) {
     return (
       <p className="text-[10.5px] text-destructive bg-destructive/10 border border-destructive/30 rounded px-2 py-1">
@@ -1510,22 +1546,61 @@ function ProbeResultLine({ res }: { res: ProbeResult }) {
       </p>
     )
   }
+  const allModels = res.models ?? []
+  // Heuristic: model id contains "embed" → likely an embedding
+  // model (works for ollama's bge-m3 / nomic-embed-text / mxbai
+  // and LM Studio's text-embedding-* prefix).
+  const embedModels = allModels.filter((m) => /embed/i.test(m))
+  const hasConfigured = configuredModel && allModels.includes(configuredModel)
   return (
-    <p className="text-[10.5px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded px-2 py-1 break-all">
-      ✓ reachable {res.detected ? `(${res.detected})` : ''} ·{' '}
-      {res.models?.length ?? 0} model(s)
-      {res.models && res.models.length > 0 && (
-        <span className="opacity-70">
-          {' '}
-          · e.g.{' '}
-          {res.models
-            .filter((m) => /embed/i.test(m))
-            .slice(0, 3)
-            .join(', ') ||
-            res.models.slice(0, 3).join(', ')}
-        </span>
+    <div className="text-[10.5px] bg-emerald-500/10 border border-emerald-500/30 rounded px-2 py-1.5 flex flex-col gap-1">
+      <p className="text-emerald-300">
+        ✓ reachable {res.detected ? `(${res.detected})` : ''} ·{' '}
+        {allModels.length} model(s) total · {embedModels.length} embedding
+      </p>
+      {configuredModel && !hasConfigured && (
+        <p className="text-amber-300">
+          ⚠ Configured model{' '}
+          <code className="font-mono">{configuredModel}</code> isn't in the
+          list. Pick one of the embedding models below or fix the name.
+        </p>
       )}
-    </p>
+      {embedModels.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-0.5">
+          <span className="text-emerald-300/70">embedding models:</span>
+          {embedModels.slice(0, 6).map((m) => {
+            const active = m === configuredModel
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => onApplyModel(m)}
+                className={`px-1.5 py-0.5 rounded font-mono text-[10px] border transition-colors ${
+                  active
+                    ? 'border-emerald-400 bg-emerald-500/30 text-emerald-100'
+                    : 'border-emerald-500/30 hover:bg-emerald-500/20 text-emerald-200'
+                }`}
+                title={active ? 'Currently configured' : 'Click to apply'}
+              >
+                {active ? '✓ ' : ''}
+                {m}
+              </button>
+            )
+          })}
+          {embedModels.length > 6 && (
+            <span className="text-emerald-300/60">
+              +{embedModels.length - 6} more
+            </span>
+          )}
+        </div>
+      )}
+      {embedModels.length === 0 && allModels.length > 0 && (
+        <p className="text-amber-300">
+          ⚠ No model name contains "embed". The endpoint might not have
+          an embedding model loaded — check your local server.
+        </p>
+      )}
+    </div>
   )
 }
 
