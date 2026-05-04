@@ -220,6 +220,20 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 			"dimensions", memorySvc.Dimensions(),
 		)
 
+		// Best-effort scan for local embedding services. Each probe
+		// has its own tight timeout so the whole sweep stays under
+		// a second even when none respond.
+		probeCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+		hits := memory.AutoDetect(probeCtx)
+		cancel()
+		memorySvc.SetAutoDetected(hits)
+		for _, h := range hits {
+			log.Info("memory auto-detected service",
+				"service", h.Detected,
+				"base_url", h.BaseURL,
+				"models", len(h.Models))
+		}
+
 		// Mint a dedicated integration for the memory MCP subprocess
 		// to authenticate with, then teach the SessionProvider to
 		// auto-inject it into every spawned session's mcp.json.

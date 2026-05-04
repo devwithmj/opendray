@@ -22,7 +22,22 @@ type Service struct {
 	topK      int
 	scope     ScopeDefaults
 	log       *slog.Logger
+
+	// AutoDetected captures the embedding services opendray noticed
+	// at startup (ollama / LM Studio on their default ports). Pure
+	// metadata — never auto-switches the active embedder. The UI
+	// uses this to surface "we see ollama running, click here to
+	// switch your backend".
+	autoDetected []ProbeResult
 }
+
+// SetAutoDetected stores the results of a startup probe sweep so
+// the UI can surface them. Idempotent.
+func (s *Service) SetAutoDetected(hits []ProbeResult) { s.autoDetected = hits }
+
+// AutoDetected returns the captured probe results. Empty when no
+// service responded (BM25 fallback is the default).
+func (s *Service) AutoDetected() []ProbeResult { return s.autoDetected }
 
 // ScopeDefaults captures the operator's per-scope policy. These
 // only set defaults — every API call can override.

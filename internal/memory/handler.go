@@ -49,6 +49,7 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Get("/list", h.list)
 		r.Delete("/{id}", h.delete)
 		r.Post("/test", h.test)
+		r.Post("/probe", h.probe)
 	})
 }
 
@@ -65,10 +66,31 @@ func (h *Handlers) status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"embedder":   h.svc.EmbedderName(),
-		"dimensions": h.svc.Dimensions(),
-		"enabled":    true,
+		"embedder":      h.svc.EmbedderName(),
+		"dimensions":    h.svc.Dimensions(),
+		"enabled":       true,
+		"auto_detected": h.svc.AutoDetected(),
 	})
+}
+
+// probe checks whether a given OpenAI-compatible base_url responds.
+// The UI's "Test connection" button hits this. Body shape:
+//
+//	{ "base_url": "http://localhost:11434/v1", "api_key": "" }
+//
+// Always returns 200 with a ProbeResult — the result tells the UI
+// whether the upstream is alive.
+func (h *Handlers) probe(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BaseURL string `json:"base_url"`
+		APIKey  string `json:"api_key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	res := ProbeEndpoint(r.Context(), req.BaseURL, req.APIKey)
+	writeJSON(w, http.StatusOK, res)
 }
 
 func (h *Handlers) store(w http.ResponseWriter, r *http.Request) {

@@ -25,10 +25,21 @@ export interface SearchHit {
   similarity: number
 }
 
+export interface ProbeResult {
+  base_url: string
+  reachable: boolean
+  status_code?: number
+  models?: string[]
+  error?: string
+  /** "ollama" | "lmstudio" | "openai-compatible" */
+  detected?: string
+}
+
 export interface MemoryStatus {
   embedder: string
   dimensions: number
   enabled: boolean
+  auto_detected?: ProbeResult[]
 }
 
 export interface TestEmbedResponse {
@@ -79,6 +90,16 @@ export async function testEmbedder(text: string): Promise<TestEmbedResponse> {
   return api<TestEmbedResponse>('/api/v1/memory/test', {
     method: 'POST',
     body: { text },
+  })
+}
+
+export async function probeEmbeddingEndpoint(
+  baseURL: string,
+  apiKey = '',
+): Promise<ProbeResult> {
+  return api<ProbeResult>('/api/v1/memory/probe', {
+    method: 'POST',
+    body: { base_url: baseURL, api_key: apiKey },
   })
 }
 

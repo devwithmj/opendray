@@ -25,6 +25,12 @@ import {
 } from '@/lib/settings'
 import { cn } from '@/lib/utils'
 
+import {
+  fetchMemoryStatus,
+  probeEmbeddingEndpoint,
+  type ProbeResult,
+} from '@/lib/memory'
+
 import { LogViewer } from './LogViewer'
 import { MemoryInspector } from './MemoryInspector'
 import { PathInput } from './PathInput'
@@ -757,6 +763,18 @@ function SectionForm({
           </FormGroup>
 
           <FormGroup heading="HTTP backend (used when backend=http)">
+            <HttpBackendHelpers
+              draft={c}
+              onApply={(patch) =>
+                setDraft({
+                  ...draft,
+                  memory: {
+                    ...c.memory,
+                    http: { ...c.memory.http, ...patch },
+                  },
+                })
+              }
+            />
             {visible('Base URL', 'OpenAI-compatible /v1/embeddings') && (
               <FieldRow
                 label="Base URL"
@@ -1373,6 +1391,142 @@ function mergeSection(
       break
   }
   return out
+}
+
+// HttpBackendHelpers groups the "auto-detected services" banner +
+// preset URL buttons + Test-connection button into one reusable
+// row that lives at the top of the HTTP backend FormGroup. It
+// reads /memory/status to pull whatever opendray noticed at
+// startup and lets the operator one-click apply that endpoint.
+function HttpBackendHelpers({
+  draft,
+  onApply,
+}: {
+  draft: ServerConfig
+  onApply: (patch: { base_url?: string; model?: string; api_key?: string }) => void
+}) {
+  const { data: status } = useQuery({
+    queryKey: ['memory-status-presets'],
+    queryFn: fetchMemoryStatus,
+    refetchInterval: 30_000,
+  })
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<ProbeResult | null>(null)
+
+  const presets = [
+    { label: 'ollama', url: 'http://localhost:11434/v1', model: 'nomic-embed-text', tip: 'Local ollama daemon' },
+    { label: 'LM Studio', url: 'http://localhost:1234/v1', model: '', tip: 'LM Studio local server' },
+    { label: 'OpenAI', url: 'https://api.openai.com/v1', model: 'text-embedding-3-small', tip: 'OpenAI cloud (needs API key)' },
+  ]
+
+  const test = async () => {
+    if (!draft.memory.http.base_url) return
+    setBusy(true)
+    try {
+      const res = await probeEmbeddingEndpoint(
+        draft.memory.http.base_url,
+        draft.memory.http.api_key,
+      )
+      setResult(res)
+    } catch (err) {
+      setResult({
+        base_url: draft.memory.http.base_url,
+        reachable: false,
+        error: (err as Error).message,
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const detected = (status?.auto_detected ?? []).filter(
+    (h, i, all) => all.findIndex((x) => x.detected === h.detected) === i,
+  )
+
+  return (
+    <div className="flex flex-col gap-2">
+      {detected.length > 0 && (
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-2.5 text-[11px]">
+          <p className="font-medium text-emerald-300/90 mb-1">
+            Auto-detected at startup
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {detected.map((d) => (
+              <button
+                key={d.base_url}
+                type="button"
+                onClick={() => {
+                  // Pick the first embedding-looking model when applying.
+                  const embedModel =
+                    d.models?.find((m) => /embed/i.test(m)) ?? d.models?.[0] ?? ''
+                  onApply({ base_url: d.base_url, model: embedModel })
+                }}
+                className="px-2 py-0.5 rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20 transition-colors font-mono text-[10.5px]"
+                title={`${d.models?.length ?? 0} model(s) — click to use`}
+              >
+                {d.detected} · {d.base_url} ({d.models?.length ?? 0} models)
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[10px] text-muted-foreground/70 mr-1">Presets:</span>
+        {presets.map((p) => (
+          <Button
+            key={p.label}
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 text-[11px]"
+            onClick={() => onApply({ base_url: p.url, model: p.model })}
+            title={p.tip}
+          >
+            {p.label}
+          </Button>
+        ))}
+        <Button
+          type="button"
+          size="sm"
+          className="h-7 text-[11px] ml-auto"
+          disabled={!draft.memory.http.base_url || busy}
+          onClick={test}
+        >
+          {busy ? <Loader2 className="size-3 animate-spin" /> : 'Test connection'}
+        </Button>
+      </div>
+
+      {result && <ProbeResultLine res={result} />}
+    </div>
+  )
+}
+
+function ProbeResultLine({ res }: { res: ProbeResult }) {
+  if (!res.reachable) {
+    return (
+      <p className="text-[10.5px] text-destructive bg-destructive/10 border border-destructive/30 rounded px-2 py-1">
+        ✗ unreachable: {res.error ?? 'connection failed'}
+      </p>
+    )
+  }
+  return (
+    <p className="text-[10.5px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded px-2 py-1 break-all">
+      ✓ reachable {res.detected ? `(${res.detected})` : ''} ·{' '}
+      {res.models?.length ?? 0} model(s)
+      {res.models && res.models.length > 0 && (
+        <span className="opacity-70">
+          {' '}
+          · e.g.{' '}
+          {res.models
+            .filter((m) => /embed/i.test(m))
+            .slice(0, 3)
+            .join(', ') ||
+            res.models.slice(0, 3).join(', ')}
+        </span>
+      )}
+    </p>
+  )
 }
 
 // SettingsSearch is exported so the parent SettingsPage can render
