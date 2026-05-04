@@ -30,6 +30,8 @@ import { StatePill } from '@/components/sessions/StatePill'
 import { AccountSwitcher } from '@/components/sessions/AccountSwitcher'
 import { InspectorPanel } from '@/components/sessions/InspectorPanel'
 import { providerVisual, cwdTail } from '@/lib/providers'
+import { providerIconKey } from '@/lib/providerIcons'
+import { BrandAvatar } from '@/components/BrandAvatar'
 import {
   listSessions,
   removeSession,
@@ -322,16 +324,12 @@ function WorkbenchHeader({
           {listCollapsed ? 'Show session list' : 'Hide session list'}
         </TooltipContent>
       </Tooltip>
-      <div
-        className={cn(
-          'shrink-0 size-9 rounded-full flex items-center justify-center text-[15px] font-semibold tracking-tight',
-          visual.bg,
-          visual.fg,
-        )}
-        aria-hidden
-      >
-        {visual.letter}
-      </div>
+      <BrandAvatar
+        iconKey={providerIconKey(session.provider_id)}
+        fallbackLetter={visual.letter}
+        size={36}
+        title={visual.name}
+      />
       <div className="flex-1 min-w-0 flex flex-col gap-0.5">
         <div className="text-[14px] font-semibold leading-tight truncate text-foreground">
           {session.name || cwdTail(session.cwd)}

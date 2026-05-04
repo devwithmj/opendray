@@ -3,6 +3,8 @@ import { X } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { providerVisual, cwdTail } from '@/lib/providers'
+import { providerIconKey } from '@/lib/providerIcons'
+import { BrandAvatar } from '@/components/BrandAvatar'
 import type { Session } from '@/lib/types'
 
 interface SessionRowProps {
@@ -71,17 +73,12 @@ export function SessionRow({
           : 'hover:bg-card/60 hover:border-border/60',
       )}
     >
-      <div
-        className={cn(
-          'shrink-0 size-8 rounded-full flex items-center justify-center',
-          'text-[13px] font-semibold tracking-tight',
-          visual.bg,
-          visual.fg,
-        )}
-        aria-hidden
-      >
-        {visual.letter}
-      </div>
+      <BrandAvatar
+        iconKey={providerIconKey(session.provider_id)}
+        fallbackLetter={visual.letter}
+        size={32}
+        title={visual.name}
+      />
 
       <div className="flex-1 min-w-0 flex flex-col gap-0.5 pr-4">
         <div className="flex items-center gap-2 min-w-0">

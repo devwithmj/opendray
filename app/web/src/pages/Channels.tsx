@@ -37,6 +37,8 @@ import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { BrandIcon } from '@/components/BrandIcon'
+import { BrandAvatar } from '@/components/BrandAvatar'
 import {
   listChannels,
   createChannel,
@@ -70,13 +72,6 @@ function generateBridgeToken(): string {
   const bytes = new Uint8Array(24)
   crypto.getRandomValues(bytes)
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
-}
-
-// kindEmoji returns the per-kind avatar shown on the card; falls back
-// to a generic envelope for unknown kinds.
-function kindEmoji(kind: string): string {
-  const def = getKindDef(kind)
-  return def?.emoji ?? (kind === 'bridge' ? '🌉' : '📨')
 }
 
 export function ChannelsPage() {
@@ -240,7 +235,12 @@ function ChannelCard({
   return (
     <div className="border border-border rounded-md p-4 bg-card/30 flex flex-col gap-3">
       <div className="flex items-start gap-3">
-        <span className="text-lg leading-none mt-0.5">{kindEmoji(channel.kind)}</span>
+        <BrandAvatar
+          iconKey={def?.iconKey}
+          fallbackLetter={(def?.label ?? channel.kind).charAt(0)}
+          size={28}
+          title={def?.label ?? channel.kind}
+        />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[13px] font-semibold">{displayKind}</span>
@@ -522,7 +522,11 @@ function ChannelDialog({
             <Label htmlFor="kind">Kind</Label>
             {isEdit ? (
               <div className="flex items-center gap-2 px-3 py-2 border border-border rounded-md bg-muted/20 text-[12px]">
-                <span>{def?.emoji ?? '📨'}</span>
+                <BrandIcon
+                  iconKey={def?.iconKey}
+                  size={14}
+                  title={def?.label ?? kind}
+                />
                 <span className="font-mono">{def?.label ?? kind}</span>
                 <span className="text-muted-foreground/70">(immutable — delete and recreate to change kind)</span>
               </div>
@@ -536,7 +540,14 @@ function ChannelDialog({
                     const d = getKindDef(k)
                     return (
                       <SelectItem key={k} value={k}>
-                        {d ? `${d.emoji}  ${d.label}` : k}
+                        <span className="inline-flex items-center gap-2">
+                          {d?.iconKey ? (
+                            <BrandIcon iconKey={d.iconKey} size={14} title={d.label} />
+                          ) : (
+                            <span>{d?.emoji ?? '📨'}</span>
+                          )}
+                          <span>{d ? d.label : k}</span>
+                        </span>
                       </SelectItem>
                     )
                   })}

@@ -9,6 +9,8 @@ import { listSessions, removeSession } from '@/lib/sessions'
 import { listClaudeAccounts } from '@/lib/claudeAccounts'
 import { isTerminalSessionState, type Session } from '@/lib/types'
 import { useSessionTabs } from '@/stores/sessionTabs'
+import { providerIconKey } from '@/lib/providerIcons'
+import { BrandAvatar } from '@/components/BrandAvatar'
 import { providerVisual, cwdTail } from '@/lib/providers'
 import { cn } from '@/lib/utils'
 import { SessionRow } from './SessionRow'
@@ -264,17 +266,13 @@ function ChildRow({ session, active, onClick, onDelete }: ChildRowProps) {
       )}
     >
       <CornerDownRight className="size-3 text-muted-foreground/40 shrink-0" />
-      <span
-        className={cn(
-          'shrink-0 size-4 rounded-sm flex items-center justify-center',
-          'text-[9px] font-semibold',
-          visual.bg,
-          visual.fg,
-        )}
-        aria-hidden
-      >
-        {visual.letter}
-      </span>
+      <BrandAvatar
+        iconKey={providerIconKey(session.provider_id)}
+        fallbackLetter={visual.letter}
+        size={16}
+        title={visual.name}
+        className="rounded-sm"
+      />
       <span
         className={cn(
           'size-1.5 rounded-full shrink-0',

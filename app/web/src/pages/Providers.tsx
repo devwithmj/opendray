@@ -9,6 +9,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { ConfigForm } from '@/components/providers/ConfigForm'
+import { BrandAvatar } from '@/components/BrandAvatar'
+import { providerIconKey } from '@/lib/providerIcons'
 import { ClaudeAccountsPanel } from '@/components/providers/ClaudeAccountsPanel'
 import {
   listProviders,
@@ -91,7 +93,12 @@ export function ProvidersPage() {
                     : 'hover:bg-card/60',
                 )}
               >
-                <span className="text-base shrink-0">{p.manifest.icon}</span>
+                <BrandAvatar
+                  iconKey={providerIconKey(p.manifest.id)}
+                  fallbackLetter={p.manifest.displayName?.charAt(0) ?? '?'}
+                  size={20}
+                  title={p.manifest.displayName}
+                />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-[12px] font-medium truncate">
@@ -164,7 +171,13 @@ function ProviderDetail({
   return (
     <main className="flex-1 flex flex-col min-w-0 bg-background">
       <div className="border-b border-border px-6 py-4 flex items-start gap-4">
-        <span className="text-2xl leading-none mt-1 shrink-0">{m.icon}</span>
+        <BrandAvatar
+          iconKey={providerIconKey(m.id)}
+          fallbackLetter={m.displayName?.charAt(0) ?? '?'}
+          size={36}
+          title={m.displayName}
+          className="mt-1"
+        />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-[16px] font-semibold tracking-tight">

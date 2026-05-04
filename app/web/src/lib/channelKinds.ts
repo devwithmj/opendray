@@ -25,6 +25,13 @@ export interface KindDef {
   kind: string
   label: string
   emoji: string
+  /**
+   * Optional simple-icons / inline-brand key. When set, the admin
+   * UI renders the official brand mark via <BrandIcon>; emoji is
+   * used as fallback (and in compact list views where the SVG is
+   * overkill).
+   */
+  iconKey?: string
   description: string
   /**
    * Fields the operator fills in. Order matches the form display.
@@ -53,6 +60,7 @@ export const KIND_DEFS: KindDef[] = [
     kind: 'telegram',
     label: 'Telegram',
     emoji: '✈️',
+    iconKey: 'telegram',
     description:
       'Bot via @BotFather. opendray long-polls getUpdates and sends via REST. Buttons + reply_to_message work natively.',
     tokenFields: ['bot_token'],
@@ -78,6 +86,7 @@ export const KIND_DEFS: KindDef[] = [
     kind: 'slack',
     label: 'Slack',
     emoji: '💬',
+    iconKey: 'slack',
     description:
       'Socket Mode — no public webhook needed. Requires both a bot OAuth token (xoxb-) and an app-level token (xapp-) with connections:write.',
     tokenFields: ['bot_token'],
@@ -111,6 +120,7 @@ export const KIND_DEFS: KindDef[] = [
     kind: 'discord',
     label: 'Discord',
     emoji: '🎮',
+    iconKey: 'discord',
     description:
       'Bot via Discord Developer Portal with MESSAGE CONTENT INTENT enabled. Connects to Gateway WS — no public URL required.',
     tokenFields: ['bot_token'],
@@ -136,6 +146,7 @@ export const KIND_DEFS: KindDef[] = [
     kind: 'feishu',
     label: 'Feishu (飞书)',
     emoji: '🐦',
+    iconKey: 'feishu',
     description:
       'App-level credentials. Uses event subscription webhook for inbound. Public webhook URL is generated below — paste it into the Feishu dev console.',
     tokenFields: ['app_secret'],
@@ -177,6 +188,7 @@ export const KIND_DEFS: KindDef[] = [
     kind: 'dingtalk',
     label: 'DingTalk (钉钉)',
     emoji: '📞',
+    iconKey: 'dingtalk',
     description:
       'Custom group robot. Outbound only (text + markdown + actionCard). Group chat → Robots → Add → Sign mode → copy webhook + secret.',
     tokenFields: ['secret', 'webhook_url'],
@@ -202,6 +214,7 @@ export const KIND_DEFS: KindDef[] = [
     kind: 'wecom',
     label: 'WeCom (企业微信)',
     emoji: '🏢',
+    iconKey: 'wecom',
     description:
       'Group robot webhook. Outbound only (text + markdown). Group settings → Group robots → Add → copy webhook URL.',
     tokenFields: ['webhook_key', 'webhook_url'],
@@ -227,6 +240,7 @@ export const KIND_DEFS: KindDef[] = [
     kind: 'wechat',
     label: 'WeChat (个人微信)',
     emoji: '💚',
+    iconKey: 'wechat',
     description:
       'Push to personal WeChat via WxPusher (https://wxpusher.zjiecode.com). Outbound-only — push services do not relay user replies. Each recipient subscribes once via QR code.',
     tokenFields: ['app_token'],
