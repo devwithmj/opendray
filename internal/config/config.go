@@ -21,6 +21,7 @@ type Config struct {
 	Vault     VaultConfig     `toml:"vault" json:"vault"`
 	MCP       MCPConfig       `toml:"mcp" json:"mcp"`
 	Providers ProvidersConfig `toml:"providers" json:"providers"`
+	Memory    MemoryConfig    `toml:"memory" json:"memory"`
 
 	// FilePath is the path config.toml was loaded from. Set by Load
 	// after a successful read so the runtime can find the same file
@@ -40,6 +41,86 @@ type Config struct {
 // behaviour exactly. Override only when the operator runs a CLI
 // from a non-default location (e.g. CLAUDE_CONFIG_DIR set on the
 // shell, or a vendored install under /opt).
+// MemoryConfig drives the optional opendray-native memory subsystem
+// (the "remember things across sessions" RAG layer exposed as an
+// in-process MCP server). Every field is optional; the zero-value
+// config is the documented default — BM25 keyword retrieval over
+// pgvector storage, project-scoped, no API keys.
+//
+// The architecture uses two replaceable subsystems:
+//
+//   - Embedder: turns text into vectors. Built-in BM25 (no model)
+//     or HTTP (OpenAI-compatible: ollama / OpenAI / LocalAI / etc.).
+//     Phase 2 will add a built-in ONNX model (bge-m3) — operators
+//     who want it today can point an HTTP backend at ollama.
+//   - Store: persists vectors. pgvector (default, reuses the
+//     opendray PG) or chromem-go (single-file, opt-in for setups
+//     without pgvector).
+type MemoryConfig struct {
+	// Backend selects the embedder. "auto" = BM25 with future ONNX
+	// upgrade; "bm25" = forced keyword; "http" = OpenAI-compatible
+	// HTTP endpoint (configured via [memory.http]).
+	Backend string `toml:"backend" json:"backend"`
+
+	// Store selects the vector store. "pgvector" (default; reuses
+	// the existing PG) or "chromem" (single-file, no PG dependency).
+	Store string `toml:"store" json:"store"`
+
+	// DefaultTopK is the K returned by memory.search when callers
+	// don't pass an explicit value. Empty/0 → 5.
+	DefaultTopK int `toml:"default_top_k" json:"default_top_k"`
+
+	// SimilarityThreshold (0..1) — minimum cosine similarity for a
+	// candidate to count as a match (used both for retrieval cutoff
+	// and dedupe-on-insert). Empty → 0.7.
+	SimilarityThreshold float64 `toml:"similarity_threshold" json:"similarity_threshold"`
+
+	// Local + HTTP backends. Only the active one matters.
+	Local MemoryLocalConfig `toml:"local" json:"local"`
+	HTTP  MemoryHTTPConfig  `toml:"http" json:"http"`
+
+	// Scope rules for newly stored memories.
+	Scope MemoryScopeConfig `toml:"scope" json:"scope"`
+
+	// Chromem path. Only consulted when Store == "chromem". Empty
+	// → ~/.opendray/memory/chromem.gob.
+	ChromemPath string `toml:"chromem_path" json:"chromem_path"`
+}
+
+// MemoryLocalConfig configures the in-binary ONNX path (phase 2).
+// Currently unused; the field is wired so v1 config files survive
+// the v2 upgrade without manual edits.
+type MemoryLocalConfig struct {
+	// Model name: "bge-m3" / "multilingual-e5-base" / "minilm".
+	// Empty → "bge-m3" once shipped.
+	Model string `toml:"model" json:"model"`
+}
+
+// MemoryHTTPConfig points at any OpenAI-compatible /v1/embeddings
+// endpoint. Examples:
+//
+//	BaseURL  = "http://localhost:11434/v1"      Model = "nomic-embed-text"
+//	BaseURL  = "https://api.openai.com/v1"      Model = "text-embedding-3-small"
+//	BaseURL  = "http://localhost:8080/v1"       Model = "<your local model>"
+type MemoryHTTPConfig struct {
+	BaseURL    string `toml:"base_url" json:"base_url"`
+	Model      string `toml:"model" json:"model"`
+	APIKey     string `toml:"api_key" json:"api_key"`
+	Dimensions int    `toml:"dimensions" json:"dimensions"`
+}
+
+// MemoryScopeConfig governs the visibility model for stored memories.
+type MemoryScopeConfig struct {
+	// Default scope for memory.store calls when the agent doesn't
+	// pass one explicitly. "session" / "project" / "global".
+	// Empty → "project".
+	Default string `toml:"default" json:"default"`
+
+	// Operators allowed to read "global" memories (CSV). Empty =
+	// global memories are private to whoever stored them.
+	GlobalReaders string `toml:"global_readers" json:"global_readers"`
+}
+
 type ProvidersConfig struct {
 	Claude ClaudeProviderConfig `toml:"claude" json:"claude"`
 	Codex  CodexProviderConfig  `toml:"codex" json:"codex"`

@@ -45,6 +45,7 @@ import (
 	vaultgit "github.com/opendray/opendray-v2/internal/vaultgit"
 	"github.com/opendray/opendray-v2/internal/gateway"
 	"github.com/opendray/opendray-v2/internal/integration"
+	"github.com/opendray/opendray-v2/internal/memory"
 	"github.com/opendray/opendray-v2/internal/session"
 	"github.com/opendray/opendray-v2/internal/settings"
 	"github.com/opendray/opendray-v2/internal/store"
@@ -203,6 +204,23 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	settingsSvc := settings.NewService(cfg.FilePath, log)
 	settingsHandlers := settings.NewHandler(settingsSvc, logRing, log)
 
+	// Memory subsystem — optional but built unconditionally so the
+	// MCP server can advertise itself even when no memories exist
+	// yet. resolveMemoryService picks the embedder + store from
+	// cfg.Memory; the zero-value config gives BM25 + pgvector.
+	memorySvc, err := resolveMemoryService(ctx, cfg.Memory, st, log)
+	if err != nil {
+		st.Close()
+		return nil, fmt.Errorf("init memory: %w", err)
+	}
+	if memorySvc != nil {
+		log.Info("memory ready",
+			"embedder", memorySvc.EmbedderName(),
+			"dimensions", memorySvc.Dimensions(),
+		)
+	}
+	memoryHandlers := memory.NewHandlers(memorySvc, log)
+
 	gw := gateway.NewServer(gateway.Deps{
 		Logger:    log,
 		DB:        st,
@@ -236,6 +254,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 				auditHandlers.Mount(r)
 				intgrCallLogHandlers.Mount(r)
 				settingsHandlers.Mount(r)
+				memoryHandlers.Mount(r)
 			})
 
 			// Dual-auth (admin OR integration API key): all business
@@ -487,6 +506,97 @@ func resolveMCPPaths(c config.MCPConfig, notesRoot, skillsRoot string) (root, se
 		secrets = expandPath(secrets)
 	}
 	return root, secrets
+}
+
+// resolveMemoryService translates [memory] into a live
+// memory.Service. Returns (nil, nil) when memory is explicitly
+// disabled; an error when the chosen backend can't be initialised
+// (caller treats as fatal — the operator picked something they
+// didn't actually have).
+//
+// Choice matrix:
+//
+//	backend = ""   | "auto"          → BM25 + pgvector store
+//	backend = "bm25"                 → BM25 + pgvector store
+//	backend = "http"                 → HTTP embedder + pgvector store
+//	store   = "pgvector" (default)   → opendray's existing PG with vector ext
+//	store   = "chromem"              → not yet implemented in v1
+func resolveMemoryService(
+	ctx context.Context,
+	cfg config.MemoryConfig,
+	st *store.Store,
+	log *slog.Logger,
+) (*memory.Service, error) {
+	emb, err := buildEmbedder(cfg)
+	if err != nil {
+		return nil, err
+	}
+	storeKind := strings.ToLower(strings.TrimSpace(cfg.Store))
+	if storeKind == "" {
+		storeKind = "pgvector"
+	}
+	var memStore memory.Store
+	switch storeKind {
+	case "pgvector":
+		memStore, err = memory.OpenPgvectorStore(ctx, st.Pool())
+		if err != nil {
+			return nil, fmt.Errorf("open pgvector store: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("unknown memory.store=%q (valid: pgvector)", storeKind)
+	}
+
+	opts := memory.Options{
+		Embedder:            emb,
+		Store:               memStore,
+		SimilarityThreshold: float32(cfg.SimilarityThreshold),
+		DefaultTopK:         cfg.DefaultTopK,
+		Scope: memory.ScopeDefaults{
+			Default: memory.Scope(cfg.Scope.Default),
+			GlobalReaders: splitCSV(cfg.Scope.GlobalReaders),
+		},
+		Logger: log,
+	}
+	return memory.New(opts)
+}
+
+// buildEmbedder picks the live Embedder per cfg.Backend. Phase 1
+// supports BM25 and HTTP; phase 2 adds LocalONNX.
+func buildEmbedder(cfg config.MemoryConfig) (memory.Embedder, error) {
+	backend := strings.ToLower(strings.TrimSpace(cfg.Backend))
+	if backend == "" || backend == "auto" {
+		// "auto" today = BM25; phase 2 will switch to LocalONNX when
+		// the binary is built with the embedded model.
+		return memory.NewBM25Embedder(384), nil
+	}
+	switch backend {
+	case "bm25":
+		return memory.NewBM25Embedder(384), nil
+	case "http":
+		return memory.NewOpenAICompatibleEmbedder(memory.HTTPEmbedderConfig{
+			BaseURL:    cfg.HTTP.BaseURL,
+			Model:      cfg.HTTP.Model,
+			APIKey:     cfg.HTTP.APIKey,
+			Dimensions: cfg.HTTP.Dimensions,
+		})
+	}
+	return nil, fmt.Errorf("unknown memory.backend=%q (valid: auto, bm25, http)", cfg.Backend)
+}
+
+// splitCSV splits on commas + trims whitespace; blank entries are
+// dropped. Empty input yields a nil slice.
+func splitCSV(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // resolveClaudeHistoryConfig translates the operator's
