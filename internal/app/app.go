@@ -243,6 +243,13 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 				log.Info("memory MCP auto-attach enabled",
 					"bin", binPath,
 					"base_url", listenLoopback(cfg.Listen))
+
+				// Wire the local-memory mirror so each session spawn
+				// pulls Claude's <cwd>/.claude/projects/.../memory/*.md
+				// files into the shared store. Cross-CLI search picks
+				// them up automatically.
+				mirror := memory.NewMirror(memorySvc, log)
+				sessionProvider.WithMemoryMirror(mirror.SyncCwd)
 			}
 		}
 	}

@@ -54,7 +54,22 @@ type SessionProvider struct {
 	// available — otherwise we'd render an MCP server config the
 	// agent can't authenticate.
 	memory MemoryAutoAttach
+
+	// memoryMirror, when set, is invoked from a background goroutine
+	// right after the session's PrepareFunc returns — it pulls
+	// Claude's local .claude/.../memory/*.md files into the shared
+	// opendray pgvector store so cross-CLI search picks them up.
+	// Nil → no mirroring (memory disabled, or mirror not wired).
+	memoryMirror MemoryMirrorFunc
 }
+
+// MemoryMirrorFunc syncs Claude's local memory files for the given
+// cwd into opendray's pgvector store. The catalog package keeps a
+// function reference rather than the concrete *memory.Mirror so the
+// import graph stays one-directional — internal/memory imports
+// internal/catalog would create a cycle, since catalog already
+// imports many other packages.
+type MemoryMirrorFunc func(ctx context.Context, cwd string) (int, error)
 
 // MemoryAutoAttach holds the runtime knobs the SessionProvider
 // uses to inject opendray's memory MCP into every spawned session.
@@ -107,6 +122,15 @@ func NewSessionProvider(
 // default). Returns the receiver for fluent setup at app startup.
 func (sp *SessionProvider) WithMemoryAutoAttach(cfg MemoryAutoAttach) *SessionProvider {
 	sp.memory = cfg
+	return sp
+}
+
+// WithMemoryMirror installs a function that ingests Claude's local
+// memory files into the shared store. Called from a goroutine on
+// every session spawn so the agent's MCP search sees yesterday's
+// notes without manual setup.
+func (sp *SessionProvider) WithMemoryMirror(fn MemoryMirrorFunc) *SessionProvider {
+	sp.memoryMirror = fn
 	return sp
 }
 
@@ -231,6 +255,34 @@ func (sp *SessionProvider) Resolve(ctx context.Context, id string) (session.Prov
 				if err := injectSkillsFor(providerID, baseDir, loaded, &out); err != nil {
 					return session.PrepareOutput{}, fmt.Errorf("inject skills: %w", err)
 				}
+			}
+		}
+
+		// Inject memory-tool guidance into the agent's system prompt
+		// when the memory MCP is being attached. Without this nudge,
+		// Claude (and to a lesser extent Codex/Gemini) tends to use
+		// its built-in markdown memory feature instead of our shared
+		// MCP store, defeating the cross-CLI value prop. Done here
+		// (after skills, before MCP rendering) so the message ordering
+		// stays predictable.
+		if sp.memory.Enabled && p.Manifest.Capabilities.SupportsMcp {
+			if err := injectMemoryGuidanceFor(providerID, baseDir, &out); err != nil {
+				return session.PrepareOutput{}, fmt.Errorf("inject memory guidance: %w", err)
+			}
+		}
+
+		// Background mirror: pull whatever Claude has already written
+		// to <cwd>/.claude/projects/.../memory/*.md into the shared
+		// store, so the agent's MCP search sees them. Fire-and-forget
+		// so spawn isn't blocked on filesystem walks.
+		if sp.memoryMirror != nil {
+			cwd := session.Cwd(prepareCtx)
+			if cwd != "" {
+				go func() {
+					if _, err := sp.memoryMirror(context.Background(), cwd); err != nil {
+						sp.log.Debug("memory mirror sync", "cwd", cwd, "err", err)
+					}
+				}()
 			}
 		}
 
@@ -531,4 +583,104 @@ func defaultStr(s, def string) string {
 		return def
 	}
 	return s
+}
+
+// memoryGuidanceText is appended to the agent's system prompt
+// whenever the memory MCP server is auto-attached. The wording
+// nudges the model to prefer the shared cross-CLI store over its
+// own built-in markdown memory feature.
+//
+// Kept short: every byte costs context window. Anything longer
+// goes in the MCP tool descriptions themselves.
+const memoryGuidanceText = `## Persistent memory across CLIs (opendray-memory)
+
+This session has access to an MCP server named ` + "`opendray-memory`" + ` that
+persists facts to a shared store available to every Claude / Codex /
+Gemini session running in the same project directory.
+
+PREFER opendray-memory's tools over writing to local memory files:
+
+- BEFORE answering anything that might benefit from past context,
+  call ` + "`opendray-memory.memory_search(query)`" + `. Memories survive across
+  sessions and across CLIs.
+- WHEN the user states a durable fact (preference, identifier,
+  decision, ongoing task), call ` + "`opendray-memory.memory_store(text)`" + `
+  instead of writing local memory files. The shared store is the
+  single source of truth.
+- Memories are scoped to the current project (cwd) by default. Any
+  future Claude / Codex / Gemini session in the same directory can
+  read them through the same MCP server.
+`
+
+// injectMemoryGuidanceFor adds memoryGuidanceText to the provider's
+// system-prompt surface — same per-CLI dispatch shape as
+// injectSkillsFor, so both layers add into the same channel without
+// stepping on each other.
+//
+//	claude → another --append-system-prompt arg (Claude concatenates
+//	         every occurrence into the system prompt).
+//	codex  → append to <CODEX_HOME>/AGENTS.md (created earlier by
+//	         injectSkillsFor when skills are on; otherwise we lazily
+//	         set up CODEX_HOME here).
+//	gemini → append to <baseDir>/GEMINI.md and ensure
+//	         --include-directories <baseDir> is set (idempotent — won't
+//	         duplicate if injectSkillsFor already added it).
+func injectMemoryGuidanceFor(providerID, baseDir string, out *session.PrepareOutput) error {
+	switch providerID {
+	case "claude":
+		out.Args = append(out.Args, "--append-system-prompt", memoryGuidanceText)
+		return nil
+	case "codex":
+		home := out.Env["CODEX_HOME"]
+		if home == "" {
+			home = filepath.Join(baseDir, "codex-home")
+			if err := os.MkdirAll(home, 0o700); err != nil {
+				return fmt.Errorf("mkdir codex home: %w", err)
+			}
+			out.Env["CODEX_HOME"] = home
+		}
+		path := filepath.Join(home, "AGENTS.md")
+		return appendToFile(path, "\n\n---\n\n"+memoryGuidanceText)
+	case "gemini":
+		path := filepath.Join(baseDir, "GEMINI.md")
+		if err := appendToFile(path, "\n\n---\n\n"+memoryGuidanceText); err != nil {
+			return err
+		}
+		if !hasArgPair(out.Args, "--include-directories", baseDir) {
+			out.Args = append(out.Args, "--include-directories", baseDir)
+		}
+		return nil
+	}
+	// Other providers: silently skip — they don't have an MCP
+	// surface yet so the memory MCP wouldn't be attached anyway.
+	return nil
+}
+
+// appendToFile appends content to path, creating it (mode 0600)
+// when missing. Used by both injectSkillsFor extensions and
+// injectMemoryGuidanceFor so multiple system-prompt sources can
+// coexist in the same file.
+func appendToFile(path, content string) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", path, err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString(content); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return nil
+}
+
+// hasArgPair reports whether args contains the consecutive pair
+// flag+value (e.g. "--include-directories" then a path). Lets the
+// memory-guidance injector skip adding a duplicate flag when
+// injectSkillsFor already added one.
+func hasArgPair(args []string, flag, value string) bool {
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == flag && args[i+1] == value {
+			return true
+		}
+	}
+	return false
 }
