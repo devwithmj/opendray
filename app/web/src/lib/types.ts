@@ -136,6 +136,8 @@ export interface Channel {
   config: Record<string, unknown>
   enabled: boolean
   running: boolean
+  capabilities: string[]
+  muted: boolean
 }
 
 export interface CreateChannelRequest {

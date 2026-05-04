@@ -1,0 +1,128 @@
+package channel
+
+import (
+	"context"
+	"fmt"
+	"sort"
+	"strings"
+	"sync"
+)
+
+// CommandHandler runs a registered command. Returns an optional reply
+// text — when non-empty the Hub posts it back to the originating
+// channel as an outbound message (with ReplyCtx preserved).
+//
+// Long-running handlers should respect ctx.Done() and return promptly.
+type CommandHandler func(ctx context.Context, cc CommandContext) (reply string, err error)
+
+// CommandContext is the dispatch envelope passed to each handler.
+type CommandContext struct {
+	Channel Channel
+	Message ChannelMessage
+	Hub     *Hub
+	Command string   // canonical name, lowercased, leading "/" stripped
+	Args    []string // whitespace-split tail after the command name
+	Raw     string   // full original text (e.g. "/help arg1 arg2")
+}
+
+// Command describes one registered slash command.
+type Command struct {
+	Name        string         // lowercased, no leading "/"
+	Description string         // shown in /help
+	Handler     CommandHandler // invoked when the command fires
+	Source      string         // "builtin" | "session" | "custom"
+}
+
+// CommandRegistry holds the set of available slash commands.
+type CommandRegistry struct {
+	mu       sync.RWMutex
+	commands map[string]Command
+}
+
+// NewCommandRegistry returns a registry pre-populated with the
+// built-in commands (/help and /notify) and nothing else.
+//
+// App code that knows how to manipulate sessions wires its own
+// commands by calling Register or Hub.RegisterCommand.
+func NewCommandRegistry() *CommandRegistry {
+	r := &CommandRegistry{commands: make(map[string]Command)}
+	r.Register(Command{
+		Name:        "help",
+		Description: "List available commands",
+		Source:      "builtin",
+		Handler:     helpHandler(r),
+	})
+	return r
+}
+
+// Register adds (or replaces) a command in the registry.
+func (r *CommandRegistry) Register(cmd Command) {
+	if cmd.Name == "" {
+		return
+	}
+	cmd.Name = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(cmd.Name), "/"))
+	if cmd.Source == "" {
+		cmd.Source = "custom"
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.commands[cmd.Name] = cmd
+}
+
+// Lookup returns (command, true) when name is registered.
+func (r *CommandRegistry) Lookup(name string) (Command, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	c, ok := r.commands[strings.ToLower(strings.TrimPrefix(strings.TrimSpace(name), "/"))]
+	return c, ok
+}
+
+// List returns every registered command, sorted by name.
+func (r *CommandRegistry) List() []Command {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]Command, 0, len(r.commands))
+	for _, c := range r.commands {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// ParseCommand extracts a (name, args) tuple from text. Recognises:
+//
+//   - Plain text starting with "/" — "/help arg1 arg2"
+//   - Button callback values prefixed by EncodeAction — "act:cmd:/help"
+//   - Embedded "cmd:" payloads inside button data — "cmd:/help"
+//
+// Returns ok=false when the input is not a command.
+func ParseCommand(text string) (name string, args []string, ok bool) {
+	s := strings.TrimSpace(text)
+	if s == "" {
+		return "", nil, false
+	}
+	if action, isAction := DecodeAction(s); isAction {
+		s = strings.TrimSpace(action)
+	}
+	s = strings.TrimPrefix(s, "cmd:")
+	if !strings.HasPrefix(s, "/") {
+		return "", nil, false
+	}
+	s = strings.TrimPrefix(s, "/")
+	fields := strings.Fields(s)
+	if len(fields) == 0 {
+		return "", nil, false
+	}
+	return strings.ToLower(fields[0]), fields[1:], true
+}
+
+func helpHandler(r *CommandRegistry) CommandHandler {
+	return func(_ context.Context, _ CommandContext) (string, error) {
+		var b strings.Builder
+		b.WriteString("Available commands:\n")
+		for _, c := range r.List() {
+			fmt.Fprintf(&b, "  /%s — %s\n", c.Name, c.Description)
+		}
+		return strings.TrimRight(b.String(), "\n"), nil
+	}
+}

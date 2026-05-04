@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowUp,
@@ -45,10 +45,18 @@ export function FileBrowserDialog({
   const [newName, setNewName] = useState('')
 
   // On open, resolve initial path: prefer initialPath, fall back to
-  // server-side home dir lookup (works regardless of which host the
-  // gateway is running on).
+  // server-side home dir lookup. Guarded by initRef so it runs once per
+  // open cycle — without this, navigating (e.g. clicking the parent
+  // arrow) would change `path`, retrigger the effect, and snap back to
+  // initialPath as long as the prop is non-empty.
+  const initRef = useRef(false)
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      initRef.current = false
+      return
+    }
+    if (initRef.current) return
+    initRef.current = true
     if (initialPath) {
       setPath(initialPath)
       setPathInput(initialPath)

@@ -86,6 +86,11 @@ func (sp *SessionProvider) Resolve(ctx context.Context, id string) (session.Prov
 		exe = v
 	}
 	args := append([]string(nil), p.Manifest.DefaultArgs...)
+	// Translate ConfigSchema → CLI args/env (cliFlag, cliValue, envVar,
+	// extraArgs). Stable iteration order: schema definition order in the
+	// manifest, which keeps spawn args reproducible across restarts.
+	configArgs, configEnv := applyConfigSchema(p.Manifest.ConfigSchema, p.Config)
+	args = append(args, configArgs...)
 
 	info := session.ProviderInfo{
 		ID:         p.Manifest.ID,
@@ -121,13 +126,20 @@ func (sp *SessionProvider) Resolve(ctx context.Context, id string) (session.Prov
 		skillsEnabled = true
 	}
 
-	if !wantClaudeAccount && !mcpEnabled && !skillsEnabled {
+	if !wantClaudeAccount && !mcpEnabled && !skillsEnabled && len(configEnv) == 0 {
 		return info, nil
 	}
 
 	providerID := p.Manifest.ID
 	info.Prepare = func(prepareCtx context.Context, _, baseDir string) (session.PrepareOutput, error) {
 		out := session.PrepareOutput{Env: map[string]string{}}
+
+		// Schema-derived env (e.g. ANTHROPIC_API_KEY when authType=custom)
+		// applied first so later branches — multi-account claude, MCP —
+		// can override deliberately.
+		for k, v := range configEnv {
+			out.Env[k] = v
+		}
 
 		if wantClaudeAccount {
 			acct, token, err := sp.accounts.ReadToken(prepareCtx, claudeAccountID)

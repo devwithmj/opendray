@@ -325,33 +325,55 @@ Integration ──can call── Session API     (proxy + scope-gated)
 
 ### 8.3 Channel Hub
 
-**Responsibility:** unified abstraction over messaging services.
+**Responsibility:** unified abstraction over messaging services with rich-content support, slash commands, and external (non-Go) adapters.
 
 **Owns:**
-- One `Channel` interface with implementations: `telegram`, `slack`, `imessage`, `signal` (eventual).
-- Inbound message router (channel → session).
-- Outbound dispatcher (event bus → channel).
-- Quick-reply registry.
+- A small core `Channel` interface plus optional **capability interfaces** (`CardSender`, `ButtonSender`, `MessageUpdater`, `TypingIndicator`, `ImageSender`, `FileSender`, `ReplyCapable`).
+- A `Card` model (Markdown / Divider / Buttons / ListItem / Select / Note) with text-fallback rendering.
+- A `CommandRegistry` for slash commands (built-in `/help`, `/notify`, `/status`; app code wires session-aware ones).
+- Hub: lifecycle, persistence, event-bus dispatch, command routing, mute filter.
+- The `bridge` channel kind: a WebSocket protocol that lets external (Python/Node/...) adapters register at runtime — see ADR 0011 and `docs/bridge-protocol.md`.
 
 **API surface:**
-- `GET /api/v1/channels` — list configured
-- `POST /api/v1/channels` — configure new (admin)
-- `PATCH /api/v1/channels/{id}` — update config
+- `GET /api/v1/channels` — list configured (now reports `capabilities[]` and `muted`)
+- `GET /api/v1/channels/_kinds` — available kinds (currently `telegram`, `bridge`)
+- `POST /api/v1/channels` — configure new
+- `PATCH /api/v1/channels/{id}` — update config / enabled
 - `DELETE /api/v1/channels/{id}`
-- `POST /api/v1/channels/{id}/test` — send a "hello" to verify
-- Internal: subscribes to `session.idle`, `session.ended`, etc., maps to channel notifications
+- `POST /api/v1/channels/{id}/test` — send "OpenDray channel test ✓"
+- `GET /api/v1/channels/bridge/ws` — token-authenticated adapter WS (no admin auth)
+- Internal: subscribes to `session.idle`, `session.ended`; emits `channel.message_received`, `channel.command_received`, `channel.command_unknown`, `channel.message_sent`.
 
 **Channel interface (Go):**
 ```go
+// Mandatory baseline.
 type Channel interface {
     Kind() string
-    Start(ctx context.Context) error
+    ID() string
+    Start(ctx context.Context, inbound InboundFunc) error
     Stop(ctx context.Context) error
     Send(ctx context.Context, msg ChannelMessage) error
 }
+
+// Optional capabilities (any subset).
+type CardSender interface { SendCard(ctx, msg, *Card) error }
+type ButtonSender interface { SendWithButtons(ctx, msg, [][]ButtonOption) error }
+type MessageUpdater interface { UpdateMessage(ctx, msg, handle, text) error }
+type TypingIndicator interface { StartTyping(ctx, msg) (stop func()) }
+type ImageSender interface { SendImage(ctx, msg, ImageAttachment) error }
+type FileSender interface { SendFile(ctx, msg, FileAttachment) error }
+type ReplyCapable interface { SupportsReply() bool }
 ```
 
-Implementations live in `internal/channel/{telegram,slack,imessage}/`.
+Capability methods that the underlying connector cannot fulfil should return
+`channel.ErrNotSupported` so the Hub falls back to text rendering.
+`ChannelMessage.ReplyCtx` is opaque to the Hub; it threads platform-specific
+routing (Telegram chat+message id, Slack thread_ts, bridge adapter handle, ...)
+across the inbound→outbound boundary.
+
+Implementations live in `internal/channel/{telegram,bridge}/`. New built-in
+kinds register a factory from `init()` and are wired into `app/` via blank
+import. External adapters use the bridge protocol — no Go recompile required.
 
 ### 8.4 Catalog (CLI providers)
 

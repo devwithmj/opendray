@@ -209,6 +209,17 @@ func (h *Handlers) stream(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	ch, unsub, err := h.svc.Subscribe(r.Context(), id)
 	if err != nil {
+		// For ended/stopped sessions, complete the WebSocket handshake
+		// and send a clean close (1001 going-away) so the client's
+		// reconnect loop latches onto a real "ended" signal instead of
+		// firing repeated 404s through the proxy. Browsers treat
+		// pre-upgrade HTTP errors as abnormal closes (code 1006), which
+		// our reconnect logic interprets as a transient failure and
+		// keeps retrying.
+		if errors.Is(err, ErrNotFound) || errors.Is(err, ErrAlreadyEnded) {
+			h.streamCloseEnded(w, r)
+			return
+		}
 		h.respondError(w, err)
 		return
 	}
@@ -257,6 +268,30 @@ func (h *Handlers) stream(w http.ResponseWriter, r *http.Request) {
 	case <-writerDone:
 	case <-time.After(time.Second):
 	}
+}
+
+// streamCloseEnded completes the WebSocket handshake and immediately
+// sends a normal-close (1001 going-away) frame so the client's
+// reconnect loop sees a clean termination instead of HTTP 404 →
+// abnormal close → retry. Optional JSON `{type:"ended"}` payload
+// gives clients that want it a richer signal before the close.
+func (h *Handlers) streamCloseEnded(w http.ResponseWriter, r *http.Request) {
+	conn, err := h.upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		// Upgrade failed; nothing to do — client will see HTTP error.
+		return
+	}
+	defer conn.Close()
+	_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"ended"}`))
+	closeMsg := websocket.FormatCloseMessage(
+		websocket.CloseGoingAway,
+		"session ended",
+	)
+	_ = conn.WriteControl(
+		websocket.CloseMessage,
+		closeMsg,
+		time.Now().Add(time.Second),
+	)
 }
 
 // switchClaudeAccount handles PATCH /sessions/{id}/claude-account.

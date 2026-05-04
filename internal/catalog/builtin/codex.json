@@ -44,12 +44,25 @@
       "label_zh": "审批模式",
       "type": "select",
       "group": "runtime",
-      "options": ["suggest", "auto-edit", "full-auto"],
-      "default": "suggest",
-      "cliFlag": "--approval-mode",
+      "options": ["untrusted", "on-request", "never"],
+      "default": "on-request",
+      "cliFlag": "--ask-for-approval",
       "cliValue": true,
-      "description": "suggest = ask before changes · auto-edit = auto-apply file edits · full-auto = YOLO mode",
-      "description_zh": "suggest = 修改前询问 · auto-edit = 自动应用文件编辑 · full-auto = 全自动"
+      "description": "untrusted = only run trusted commands without asking · on-request = model decides when to ask · never = never ask (pair with sandbox)",
+      "description_zh": "untrusted = 仅可信命令免询问 · on-request = 由模型决定何时询问 · never = 从不询问（建议配合 sandbox 使用）"
+    },
+    {
+      "key": "sandbox",
+      "label": "Sandbox Policy",
+      "label_zh": "沙盒策略",
+      "type": "select",
+      "group": "runtime",
+      "options": ["read-only", "workspace-write", "danger-full-access"],
+      "default": "workspace-write",
+      "cliFlag": "-s",
+      "cliValue": true,
+      "description": "read-only = no writes · workspace-write = write inside workspace · danger-full-access = no sandbox",
+      "description_zh": "read-only = 只读 · workspace-write = 仅工作区可写 · danger-full-access = 无沙盒"
     },
     {
       "key": "command",

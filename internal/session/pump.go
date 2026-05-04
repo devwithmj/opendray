@@ -11,6 +11,12 @@ import (
 	"github.com/opendray/opendray-v2/internal/eventbus"
 )
 
+// idleTailLines bounds how much of the recent stdout we ship inside
+// the session.idle event. Big enough to capture a typical Claude
+// response or interactive prompt; small enough to fit in a chat
+// notification without overwhelming the reader.
+const idleTailLines = 15
+
 // pumpStdout copies bytes from the PTY into the ring buffer + fanout
 // subscribers. Updates lastActivity so the idle watcher resets when
 // the CLI emits output. Exits when the PTY closes (process death =>
@@ -24,6 +30,14 @@ func (m *Manager) pumpStdout(rs *runningSession) {
 			chunk := make([]byte, n)
 			copy(chunk, buf[:n])
 			_, _ = rs.ring.Write(chunk)
+			if rs.vt != nil {
+				// Feed the virtual terminal so RecentScreen sees the
+				// post-ANSI state. Errors here are non-fatal — a
+				// malformed escape would just leave a glyph somewhere;
+				// the live xterm.js client still sees the raw bytes
+				// via fanout.
+				_, _ = rs.vt.Write(chunk)
+			}
 			rs.fanout(chunk)
 			if rs.markActive(time.Now()) {
 				m.flipBackToRunning(rs)
@@ -62,12 +76,41 @@ func (m *Manager) idleWatcher(rs *runningSession) {
 			if terminal {
 				return
 			}
+			data := map[string]any{
+				"session_id":  rs.sess.ID,
+				"idle_for_ms": m.idleThreshold.Milliseconds(),
+			}
+			// Snippet source priority:
+			//   1. Claude JSONL transcript — full clean assistant
+			//      response, no TUI chrome, no truncation
+			//   2. Virtual-terminal screen snapshot — what the user
+			//      sees in the live web terminal right now
+			//   3. Raw ring-buffer tail — defensive fallback
+			snippet := ""
+			rs.sessMu.RLock()
+			provider := rs.sess.ProviderID
+			cwd := rs.sess.Cwd
+			rs.sessMu.RUnlock()
+			if provider == "claude" && cwd != "" {
+				snippet = claudeRecentResponse(cwd)
+			}
+			if snippet == "" && rs.vt != nil {
+				snippet = ScreenSnapshot(rs.vt)
+				// Screen snapshots still need TUI chrome stripping
+				// (model bar, bypass-permissions hint, separator runs,
+				// status spinners). JSONL output is already clean.
+				snippet = FilterClaudeChrome(snippet)
+			}
+			if snippet == "" {
+				snippet = CleanTerminalOutput(string(rs.ring.Snapshot()), idleTailLines)
+				snippet = FilterClaudeChrome(snippet)
+			}
+			if snippet != "" {
+				data["recent_output"] = snippet
+			}
 			m.bus.Publish(eventbus.Event{
 				Topic: "session.idle",
-				Data: map[string]any{
-					"session_id":  rs.sess.ID,
-					"idle_for_ms": m.idleThreshold.Milliseconds(),
-				},
+				Data:  data,
 			})
 		}
 	}

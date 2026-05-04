@@ -8,6 +8,7 @@ import {
   Settings,
   Boxes,
   NotebookPen,
+  BookOpen,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -31,6 +32,7 @@ const items: NavItem[] = [
   { to: '/notes', icon: NotebookPen, label: 'Notes', shortcut: 'g n' },
   { to: '/plugins', icon: Boxes, label: 'Plugins', shortcut: 'g l' },
   { to: '/settings', icon: Settings, label: 'Settings', shortcut: 'g ,' },
+  { to: '/tutorial', icon: BookOpen, label: 'Tutorial', shortcut: 'g h' },
 ]
 
 export function SidebarNav() {

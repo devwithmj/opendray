@@ -23,8 +23,15 @@ import (
 	"github.com/opendray/opendray-v2/internal/auth"
 	"github.com/opendray/opendray-v2/internal/catalog"
 	"github.com/opendray/opendray-v2/internal/channel"
+	"github.com/opendray/opendray-v2/internal/channel/bridge" // also registers kind=bridge via init()
 	"github.com/opendray/opendray-v2/internal/cliacct"
+	_ "github.com/opendray/opendray-v2/internal/channel/dingtalk" // register kind=dingtalk
+	_ "github.com/opendray/opendray-v2/internal/channel/discord"  // register kind=discord
+	_ "github.com/opendray/opendray-v2/internal/channel/feishu"   // register kind=feishu
+	_ "github.com/opendray/opendray-v2/internal/channel/slack"    // register kind=slack
 	_ "github.com/opendray/opendray-v2/internal/channel/telegram" // register kind=telegram
+	_ "github.com/opendray/opendray-v2/internal/channel/wechat"   // register kind=wechat (wxpusher push)
+	_ "github.com/opendray/opendray-v2/internal/channel/wecom"    // register kind=wecom
 	"github.com/opendray/opendray-v2/internal/config"
 	"github.com/opendray/opendray-v2/internal/eventbus"
 	fsapi "github.com/opendray/opendray-v2/internal/fs"
@@ -136,7 +143,13 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	sessionHandlers := session.NewHandlers(sessionMgr, log)
 
 	channelHub := channel.NewHub(st.Pool(), bus, log)
+	// Plain-text inbound from a channel (e.g. a Telegram reply that
+	// is not a slash command) gets forwarded to the last session that
+	// notified that channel — letting the operator drive a running
+	// CLI from chat without opening the web UI.
+	channelHub.SetSessionInput(sessionMgr)
 	channelHandlers := channel.NewHandlers(channelHub, log)
+	bridgeHandlers := bridge.NewHandlers(bridge.DefaultBroker(), log)
 
 	intgrSvc := integration.NewService(st.Pool(), bus, log)
 	intgrHandlers := integration.NewHandlers(intgrSvc, log)
@@ -177,8 +190,14 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		Version:   version.Current(),
 		StartedAt: time.Now(),
 		V1Routes: func(r chi.Router) {
-			// Public: only login. /health stays handled by gateway itself.
+			// Public: only login + bridge adapter WS endpoint
+			// (token-authenticated via the register frame) +
+			// per-channel webhook routes (feishu/dingtalk/wecom
+			// receive events from the platform; channel impls verify
+			// the request themselves).
 			authHandlers.MountPublic(r)
+			bridgeHandlers.Mount(r)
+			channelHandlers.MountPublic(r)
 
 			// Admin-only: integration CRUD + reverse proxy.
 			r.Group(func(r chi.Router) {

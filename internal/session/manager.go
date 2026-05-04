@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/hinshun/vt10x"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/opendray/opendray-v2/internal/eventbus"
@@ -28,6 +29,14 @@ const (
 
 	defaultIdleThreshold = 30 * time.Second
 	defaultIdleInterval  = 5 * time.Second
+
+	// defaultVTCols / defaultVTRows seed the virtual terminal we keep
+	// for screen snapshots. Most modern CLIs query the real PTY size on
+	// startup and re-render to fit, so the actual width arrives via the
+	// first /resize call — these defaults just give a sane initial
+	// canvas. Cards rendering wider than this get clipped.
+	defaultVTCols = 120
+	defaultVTRows = 40
 )
 
 // ManagerOption mutates Manager defaults; pass to NewManager.
@@ -103,6 +112,13 @@ type runningSession struct {
 	cmd     *exec.Cmd
 	pty     *os.File
 	ring    *RingBuffer
+	// vt is a virtual-terminal emulator fed in lockstep with `ring`.
+	// ring keeps the byte-stream history for client replay; vt keeps
+	// the *current screen* (post-redraw) for snapshots used by
+	// notifications / previews. Without vt, snapshotting the ring
+	// just yields raw TUI redraw frames.
+	vt vt10x.Terminal
+
 	tempDir string // per-session scratch dir, removed on session.ended
 
 	subsMu sync.Mutex
@@ -352,6 +368,7 @@ func (m *Manager) spawn(ctx context.Context, sess Session, reactivate bool) (*ru
 		cmd:          cmd,
 		pty:          ptmx,
 		ring:         NewRing(DefaultRingSize),
+		vt:           vt10x.New(vt10x.WithSize(defaultVTCols, defaultVTRows)),
 		tempDir:      tempDir,
 		subs:         make(map[chan []byte]struct{}),
 		lastActivity: sess.StartedAt,
@@ -377,6 +394,22 @@ func (m *Manager) lookup(id string) *runningSession {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.sessions[id]
+}
+
+// RecentScreen returns the current visible screen of the session's
+// virtual terminal, with blank trailing rows trimmed. This is the
+// preferred preview source for notifications and inbox cards — it
+// reflects what the user sees in the live web terminal *right now*,
+// not the raw byte-stream history of the PTY (which is full of TUI
+// redraw frames).
+//
+// Returns "" when the session is not currently running.
+func (m *Manager) RecentScreen(id string) string {
+	rs := m.lookup(id)
+	if rs == nil || rs.vt == nil {
+		return ""
+	}
+	return ScreenSnapshot(rs.vt)
 }
 
 // mergeEnv overlays `overrides` onto a base "K=V" slice. Keys present
@@ -596,6 +629,9 @@ func (m *Manager) Resize(_ context.Context, id string, cols, rows uint16) error 
 	rs := m.lookup(id)
 	if rs == nil {
 		return ErrNotFound
+	}
+	if rs.vt != nil && cols > 0 && rows > 0 {
+		rs.vt.Resize(int(cols), int(rows))
 	}
 	return pty.Setsize(rs.pty, &pty.Winsize{Cols: cols, Rows: rows})
 }

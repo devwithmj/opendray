@@ -36,6 +36,26 @@ func (h *Handlers) Mount(r chi.Router) {
 	})
 }
 
+// MountPublic mounts routes that the channel impls expose to external
+// services (Feishu/DingTalk/WeCom event subscriptions). These cannot
+// require admin auth — third-party platforms call them directly. Each
+// channel that needs inbound webhooks implements channel.WebhookHandler
+// and is responsible for verifying the request (signature / token /
+// IP allowlist) before processing.
+func (h *Handlers) MountPublic(r chi.Router) {
+	r.HandleFunc("/channels/{id}/webhook", h.webhook)
+}
+
+func (h *Handlers) webhook(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	wh, ok := h.hub.LookupWebhook(id)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	wh.HandleWebhook(w, r)
+}
+
 type createRequest struct {
 	Kind    string          `json:"kind"`
 	Config  json.RawMessage `json:"config"`

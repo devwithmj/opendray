@@ -68,6 +68,11 @@ sdk-ts/node_modules/
 sdk-ts/dist/
 sdk-ts/coverage/
 
+# ── Tooling scripts ──────────────────────────────────────────
+scripts/node_modules/
+# Catch-all for any future subdir installs
+**/node_modules/
+
 # ── Tooling caches ───────────────────────────────────────────
 .air.toml
 tmp/
