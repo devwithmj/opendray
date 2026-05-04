@@ -47,6 +47,37 @@ type SessionProvider struct {
 	mcps        *mcp.Loader      // optional; nil disables vault MCP injection
 	secretsFile string           // dotenv file for ${KEY} substitution; empty = no substitution
 	log         *slog.Logger
+
+	// memory describes the auto-attached memory MCP server. Zero
+	// value (Enabled=false) skips injection. Set via
+	// WithMemoryAutoAttach when memory + an integration token are
+	// available — otherwise we'd render an MCP server config the
+	// agent can't authenticate.
+	memory MemoryAutoAttach
+}
+
+// MemoryAutoAttach holds the runtime knobs the SessionProvider
+// uses to inject opendray's memory MCP into every spawned session.
+// All fields are required when Enabled is true; the catalog adapter
+// errors out at spawn time if any are missing.
+type MemoryAutoAttach struct {
+	// Enabled toggles the whole feature. When false, no memory MCP
+	// server is added to the rendered mcp.json.
+	Enabled bool
+	// BinaryPath is the absolute path to the opendray executable.
+	// The MCP subprocess is launched as `<BinaryPath> mcp-memory`.
+	// Resolved at startup via os.Executable so the agent doesn't
+	// rely on $PATH.
+	BinaryPath string
+	// BaseURL is the gateway origin the MCP subprocess calls back
+	// for /api/v1/admin/memory/*. Usually `http://127.0.0.1:<port>`.
+	BaseURL string
+	// APIKey is the bearer the subprocess uses to authenticate.
+	// opendray mints this at startup as a dedicated integration key.
+	APIKey string
+	// Scope determines the visibility band ("session", "project",
+	// "global"). Defaults to "project" when empty.
+	Scope string
 }
 
 func NewSessionProvider(
@@ -68,6 +99,15 @@ func NewSessionProvider(
 		secretsFile: secretsFile,
 		log:         log.With("component", "catalog.session"),
 	}
+}
+
+// WithMemoryAutoAttach enables auto-injection of opendray's memory
+// MCP server into every spawned session's rendered mcp.json. Pass
+// MemoryAutoAttach{Enabled: false} to turn the feature off (the
+// default). Returns the receiver for fluent setup at app startup.
+func (sp *SessionProvider) WithMemoryAutoAttach(cfg MemoryAutoAttach) *SessionProvider {
+	sp.memory = cfg
+	return sp
 }
 
 func (sp *SessionProvider) Resolve(ctx context.Context, id string) (session.ProviderInfo, error) {
@@ -112,6 +152,24 @@ func (sp *SessionProvider) Resolve(ctx context.Context, id string) (session.Prov
 	// Precedence on `name` collision: provider config wins. Lets users
 	// override a vault entry per-provider without editing the registry.
 	servers := mergeMCPServers(loadVaultMCPs(sp.mcps, sp.log), parseMCPServers(p.Config))
+	// Auto-attach opendray's memory MCP server when enabled at app
+	// startup. This is what makes "the agent remembers things across
+	// sessions" actually work without per-CLI manual setup.
+	if sp.memory.Enabled && p.Manifest.Capabilities.SupportsMcp {
+		servers = append(servers, MCPServer{
+			Name:    "opendray-memory",
+			Command: sp.memory.BinaryPath,
+			Args:    []string{"mcp-memory"},
+			Env: map[string]string{
+				"OPENDRAY_BASE_URL": sp.memory.BaseURL,
+				"OPENDRAY_API_KEY":  sp.memory.APIKey,
+				"OPENDRAY_MEMORY_SCOPE": defaultStr(sp.memory.Scope, "project"),
+				// Scope key is the cwd at spawn time — populated below
+				// inside Prepare since we need access to the live
+				// session.Cwd from context.
+			},
+		})
+	}
 	mcpEnabled := p.Manifest.Capabilities.SupportsMcp && len(servers) > 0
 
 	// Skill injection: enabled by default for providers in the safe
@@ -177,6 +235,19 @@ func (sp *SessionProvider) Resolve(ctx context.Context, id string) (session.Prov
 		}
 
 		if mcpEnabled {
+			// Memory MCP needs the live cwd as scope_key. We attach
+			// it here (rather than statically when servers is built)
+			// because Prepare runs per spawn and the cwd is only on
+			// the context at this point.
+			cwd := session.Cwd(prepareCtx)
+			for i := range servers {
+				if servers[i].Name == "opendray-memory" {
+					if servers[i].Env == nil {
+						servers[i].Env = map[string]string{}
+					}
+					servers[i].Env["OPENDRAY_MEMORY_SCOPE_KEY"] = cwd
+				}
+			}
 			// Resolve ${KEY} placeholders against the secrets file at
 			// spawn time so the rendered claude-mcp.json / codex
 			// config.toml gets real values. The on-disk vault entries
@@ -452,4 +523,12 @@ func mirrorCodexHome(src, dest string) error {
 		}
 	}
 	return nil
+}
+
+// defaultStr returns def when s is empty after trimming, otherwise s.
+func defaultStr(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
 }

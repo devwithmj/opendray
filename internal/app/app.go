@@ -141,10 +141,11 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		session.WithCodexHistoryConfig(resolveCodexHistoryConfig(cfg.Providers.Codex)),
 		session.WithGeminiHistoryConfig(resolveGeminiHistoryConfig(cfg.Providers.Gemini)),
 	)
+	sessionProvider := catalog.NewSessionProvider(cat, cliacctSvc, skillsLoader, mcpLoader, secretsFile, log)
 	sessionMgr := session.NewManager(
 		st.Pool(),
 		bus,
-		catalog.NewSessionProvider(cat, cliacctSvc, skillsLoader, mcpLoader, secretsFile, log),
+		sessionProvider,
 		log,
 		sessionOpts...,
 	)
@@ -218,6 +219,32 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 			"embedder", memorySvc.EmbedderName(),
 			"dimensions", memorySvc.Dimensions(),
 		)
+
+		// Mint a dedicated integration for the memory MCP subprocess
+		// to authenticate with, then teach the SessionProvider to
+		// auto-inject it into every spawned session's mcp.json.
+		key, err := ensureMemoryIntegration(ctx, intgrSvc)
+		if err != nil {
+			log.Warn("memory MCP auto-attach disabled — could not mint integration key",
+				"err", err)
+		} else {
+			binPath, perr := os.Executable()
+			if perr != nil {
+				log.Warn("memory MCP auto-attach disabled — os.Executable failed",
+					"err", perr)
+			} else {
+				sessionProvider.WithMemoryAutoAttach(catalog.MemoryAutoAttach{
+					Enabled:    true,
+					BinaryPath: binPath,
+					BaseURL:    listenLoopback(cfg.Listen),
+					APIKey:     key,
+					Scope:      cfg.Memory.Scope.Default,
+				})
+				log.Info("memory MCP auto-attach enabled",
+					"bin", binPath,
+					"base_url", listenLoopback(cfg.Listen))
+			}
+		}
 	}
 	memoryHandlers := memory.NewHandlers(memorySvc, log)
 
@@ -506,6 +533,61 @@ func resolveMCPPaths(c config.MCPConfig, notesRoot, skillsRoot string) (root, se
 		secrets = expandPath(secrets)
 	}
 	return root, secrets
+}
+
+// ensureMemoryIntegration guarantees an integration row exists
+// named "opendray-memory" with the right scope set, then rotates
+// its API key and returns the fresh plaintext for the SessionProvider
+// to forward into spawned MCP subprocesses.
+//
+// Rotating on every startup is deliberate — the previous key (if
+// any) is left in agent CLI mcp.json files we just rendered, but
+// those are scratch files in /tmp that get garbage-collected with
+// their session. Fresh start = fresh key.
+func ensureMemoryIntegration(ctx context.Context, svc *integration.Service) (string, error) {
+	const name = "opendray-memory"
+	scopes := []string{
+		"session:read", // for cwd visibility down the road
+	}
+	// Look for an existing row with this name.
+	all, err := svc.List(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list integrations: %w", err)
+	}
+	for _, i := range all {
+		if i.Name == name {
+			res, err := svc.RotateKey(ctx, i.ID)
+			if err != nil {
+				return "", fmt.Errorf("rotate %s: %w", name, err)
+			}
+			return res.APIKey, nil
+		}
+	}
+	res, err := svc.Register(ctx, integration.RegisterRequest{
+		Name:    name,
+		Scopes:  scopes,
+		Version: "internal",
+	})
+	if err != nil {
+		return "", fmt.Errorf("register %s: %w", name, err)
+	}
+	return res.APIKey, nil
+}
+
+// listenLoopback turns the gateway's bind address ("0.0.0.0:8770",
+// "[::]:8770", ":8770", "127.0.0.1:8770") into a loopback URL the
+// MCP subprocess can dial reliably regardless of NIC binding.
+func listenLoopback(listen string) string {
+	host, port, ok := strings.Cut(listen, ":")
+	if !ok {
+		// e.g. ":8770" → SplitN once on the first colon
+		port = strings.TrimPrefix(listen, ":")
+		host = ""
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" || host == "[::]" {
+		host = "127.0.0.1"
+	}
+	return "http://" + host + ":" + port
 }
 
 // resolveMemoryService translates [memory] into a live

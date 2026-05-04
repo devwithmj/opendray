@@ -56,3 +56,30 @@ func AccountID(ctx context.Context) string {
 	}
 	return ""
 }
+
+// ── Cwd propagation ────────────────────────────────────────────────
+//
+// Some prepare-time decisions (notably the memory MCP auto-attach)
+// need the session's working directory to scope memories correctly.
+// The cwd lives on the Session struct but isn't part of the Prepare
+// closure signature; we thread it through context to avoid breaking
+// every existing PrepareFunc.
+
+type cwdCtxKey struct{}
+
+// WithCwd attaches the session's cwd to ctx for prepare-time use.
+// Empty cwd is a no-op.
+func WithCwd(ctx context.Context, cwd string) context.Context {
+	if cwd == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, cwdCtxKey{}, cwd)
+}
+
+// Cwd retrieves the value set by WithCwd, or "" if none.
+func Cwd(ctx context.Context) string {
+	if v, ok := ctx.Value(cwdCtxKey{}).(string); ok {
+		return v
+	}
+	return ""
+}
