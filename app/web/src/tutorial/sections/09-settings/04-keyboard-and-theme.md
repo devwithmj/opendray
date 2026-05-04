@@ -48,11 +48,11 @@ is the current bindings table.
 | Default | Action |
 |---|---|
 | `g s` | Sessions |
-| `g c` | Channels |
-| `g p` | Providers |
-| `g i` | Integrations |
-| `g a` | Activity |
 | `g n` | Notes |
+| `g a` | Activity |
+| `g p` | Providers |
+| `g c` | Channels |
+| `g i` | Integrations |
 | `g l` | Plugins |
 | `g ,` | Settings |
 | `g h` | Tutorial (this page) |
