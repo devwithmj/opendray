@@ -14,11 +14,13 @@ require (
 
 require (
 	github.com/danieljoos/wincred v1.2.3 // indirect
+	github.com/daulet/tokenizers v1.27.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/yalue/onnxruntime_go v1.30.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.36.0 // indirect

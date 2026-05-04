@@ -87,13 +87,27 @@ type MemoryConfig struct {
 	ChromemPath string `toml:"chromem_path" json:"chromem_path"`
 }
 
-// MemoryLocalConfig configures the in-binary ONNX path (phase 2).
-// Currently unused; the field is wired so v1 config files survive
-// the v2 upgrade without manual edits.
+// MemoryLocalConfig points the LocalONNX embedder at on-disk
+// model + tokenizer artifacts. Used when [memory.backend = "local"]
+// AND the binary was built with `-tags local_onnx`. Standard
+// builds get the stub embedder that always errors.
 type MemoryLocalConfig struct {
-	// Model name: "bge-m3" / "multilingual-e5-base" / "minilm".
-	// Empty → "bge-m3" once shipped.
+	// Model is a friendly name for logs / UI. Has no effect on
+	// inference — the actual weights come from ModelPath. Common
+	// values: "bge-m3", "bge-small-en-v1.5", "nomic-embed-text".
 	Model string `toml:"model" json:"model"`
+	// LibraryPath is the directory holding libonnxruntime.dylib
+	// (macOS) / libonnxruntime.so (Linux). Empty defaults to
+	// /opt/homebrew/opt/onnxruntime/lib on Apple Silicon, or
+	// /usr/lib on Linux.
+	LibraryPath string `toml:"library_path" json:"library_path"`
+	// ModelPath is the absolute path to the .onnx weights.
+	ModelPath string `toml:"model_path" json:"model_path"`
+	// TokenizerPath is the absolute path to tokenizer.json
+	// (HuggingFace standard format).
+	TokenizerPath string `toml:"tokenizer_path" json:"tokenizer_path"`
+	// MaxSeqLen caps input length. Empty / 0 → 512 (bge-m3 default).
+	MaxSeqLen int `toml:"max_seq_len" json:"max_seq_len"`
 }
 
 // MemoryHTTPConfig points at any OpenAI-compatible /v1/embeddings

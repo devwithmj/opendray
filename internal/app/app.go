@@ -728,13 +728,19 @@ func resolveMemoryService(
 	return memory.New(opts)
 }
 
-// buildEmbedder picks the live Embedder per cfg.Backend. Phase 1
-// supports BM25 and HTTP; phase 2 adds LocalONNX.
+// buildEmbedder picks the live Embedder per cfg.Backend.
+//
+//	"" / "auto"  → BM25 today (will swap to LocalONNX in a future
+//	                build that ships the model)
+//	"bm25"       → BM25 hash-bucket
+//	"http"       → OpenAI-compatible /v1/embeddings client
+//	"local"      → LocalONNX (only resolves to a real embedder
+//	                when the binary was compiled with
+//	                `-tags local_onnx`; otherwise the stub returns
+//	                a clear error pointing at setup docs)
 func buildEmbedder(cfg config.MemoryConfig) (memory.Embedder, error) {
 	backend := strings.ToLower(strings.TrimSpace(cfg.Backend))
 	if backend == "" || backend == "auto" {
-		// "auto" today = BM25; phase 2 will switch to LocalONNX when
-		// the binary is built with the embedded model.
 		return memory.NewBM25Embedder(384), nil
 	}
 	switch backend {
@@ -747,8 +753,15 @@ func buildEmbedder(cfg config.MemoryConfig) (memory.Embedder, error) {
 			APIKey:     cfg.HTTP.APIKey,
 			Dimensions: cfg.HTTP.Dimensions,
 		})
+	case "local":
+		return memory.NewLocalONNXEmbedder(memory.LocalONNXConfig{
+			LibraryPath:   expandPath(cfg.Local.LibraryPath),
+			ModelPath:     expandPath(cfg.Local.ModelPath),
+			TokenizerPath: expandPath(cfg.Local.TokenizerPath),
+			MaxSeqLen:     cfg.Local.MaxSeqLen,
+		})
 	}
-	return nil, fmt.Errorf("unknown memory.backend=%q (valid: auto, bm25, http)", cfg.Backend)
+	return nil, fmt.Errorf("unknown memory.backend=%q (valid: auto, bm25, http, local)", cfg.Backend)
 }
 
 // splitCSV splits on commas + trims whitespace; blank entries are
