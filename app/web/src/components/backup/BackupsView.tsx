@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import {
   Archive,
+  ChevronDown,
+  ChevronRight,
   Download,
   HardDrive,
   KeyRound,
+  Package,
   Play,
   Plus,
   RotateCw,
@@ -36,6 +39,7 @@ import {
 import {
   type Backup,
   type BackupStatusReport,
+  type InventoryGroup,
   type Schedule,
   type TargetKind,
   type TargetSpec,
@@ -46,6 +50,7 @@ import {
   deleteBackup,
   deleteSchedule,
   deleteTarget,
+  fetchBackupInventory,
   fetchBackupStatus,
   formatBytes,
   formatInterval,
@@ -83,6 +88,7 @@ export function BackupsView() {
   return (
     <div className="flex flex-col gap-5">
       <StatusBanner status={status} />
+      <InventoryCard />
       <Tabs defaultValue="backups" className="w-full">
         <TabsList>
           <TabsTrigger value="backups">Backups</TabsTrigger>
@@ -99,6 +105,103 @@ export function BackupsView() {
           <TargetsTab />
         </TabsContent>
       </Tabs>
+    </div>
+  )
+}
+
+// ── Inventory card (what does a backup contain right now?) ──────
+
+function InventoryCard() {
+  const [open, setOpen] = useState(false)
+  const [groups, setGroups] = useState<InventoryGroup[] | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  async function load() {
+    if (groups !== null || loading) return
+    setLoading(true)
+    try {
+      setGroups(await fetchBackupInventory())
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      toast.error('Failed to load inventory', { description: msg })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function toggle() {
+    setOpen((v) => !v)
+    void load()
+  }
+
+  const totalRows = groups
+    ? groups.reduce(
+        (acc, g) => acc + g.tables.reduce((a, t) => a + t.count, 0),
+        0,
+      )
+    : 0
+
+  return (
+    <div className="rounded-md border border-border bg-card/30">
+      <button
+        type="button"
+        onClick={toggle}
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-card/60 transition-colors"
+      >
+        {open ? (
+          <ChevronDown className="size-3.5 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="size-3.5 text-muted-foreground" />
+        )}
+        <Package className="size-3.5 text-accent" />
+        <span className="text-[13px] font-medium">What's in a backup?</span>
+        {groups && (
+          <span className="text-[11px] text-muted-foreground ml-1">
+            {totalRows.toLocaleString()} rows across{' '}
+            {groups.reduce((a, g) => a + g.tables.length, 0)} tables
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 pt-1 border-t border-border/50 flex flex-col gap-3">
+          <p className="text-[12px] text-muted-foreground">
+            Each backup is a <code>pg_dump --format=custom</code> of every
+            table below, plus <code>manifest.json</code> and (optionally){' '}
+            <code>config.toml</code>. Counts are live; the bundle captures
+            whatever's there at backup time.
+          </p>
+          {loading && (
+            <div className="text-muted-foreground text-[12px]">Loading…</div>
+          )}
+          {groups?.map((g) => (
+            <div key={g.id} className="flex flex-col gap-1.5">
+              <div className="flex items-baseline gap-2">
+                <h4 className="text-[12px] font-semibold">{g.label}</h4>
+                <span className="text-[11px] text-muted-foreground">
+                  {g.tables.reduce((a, t) => a + t.count, 0).toLocaleString()}{' '}
+                  rows
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                {g.description}
+              </p>
+              <div className="flex flex-wrap gap-1.5 mt-0.5">
+                {g.tables.map((t) => (
+                  <span
+                    key={t.name}
+                    className="inline-flex items-baseline gap-1.5 px-2 py-0.5 rounded border border-border bg-card text-[11px]"
+                  >
+                    <code className="text-foreground">{t.name}</code>
+                    <span className="text-muted-foreground">
+                      {t.count.toLocaleString()}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

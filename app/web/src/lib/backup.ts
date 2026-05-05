@@ -65,6 +65,7 @@ export interface BackupStatusReport {
   key_fingerprint: string
   pg_dump_version: string
   pg_dump_error?: string
+  pg_restore_version?: string
 }
 
 /** Returns null when the backup feature is disabled (404 from server). */
@@ -278,6 +279,27 @@ export async function deleteExport(id: string): Promise<void> {
 
 export function exportDownloadURL(id: string, token: string): string {
   return `/api/v1/exports/${encodeURIComponent(id)}/download?token=${encodeURIComponent(token)}`
+}
+
+// ── inventory (what's in a backup) ──────────────────────────────
+
+export interface InventoryTable {
+  name: string
+  count: number
+}
+
+export interface InventoryGroup {
+  id: string
+  label: string
+  description: string
+  tables: InventoryTable[]
+}
+
+export async function fetchBackupInventory(): Promise<InventoryGroup[]> {
+  const res = await api<{ groups: InventoryGroup[] }>(
+    '/api/v1/backup-inventory',
+  )
+  return res.groups
 }
 
 // ── restore (A) ──────────────────────────────────────────────────

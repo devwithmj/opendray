@@ -48,6 +48,7 @@ func (h *Handlers) Mount(r chi.Router) {
 	h.MountExports(r)
 	h.MountImports(r)
 	r.Get("/backup-status", h.status)
+	r.Get("/backup-inventory", h.inventory)
 }
 
 // list serves GET /backups. Filters: ?status=&target_id=&limit=.
@@ -420,6 +421,17 @@ func (h *Handlers) restore(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = hdr // we don't currently expose the original filename
 	writeJSON(w, http.StatusOK, res)
+}
+
+// inventory returns the grouped table list with live row counts so
+// the UI can show "what's actually in a backup right now."
+func (h *Handlers) inventory(w http.ResponseWriter, r *http.Request) {
+	groups, err := h.svc.Inventory(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"groups": groups})
 }
 
 // status surfaces feature health for the UI banner: pg_dump

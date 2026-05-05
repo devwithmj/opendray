@@ -69,6 +69,13 @@ export interface ServerConfig {
       default: string
     }
   }
+  backup: {
+    enabled: boolean
+    local_dir: string
+    export_dir: string
+    pg_dump_path: string
+    pg_restore_path: string
+  }
 }
 
 export interface SettingsResponse {
@@ -139,6 +146,13 @@ export function emptyConfig(): ServerConfig {
       },
       http: { base_url: '', model: '', api_key: '', dimensions: 0 },
       scope: { default: '' },
+    },
+    backup: {
+      enabled: false,
+      local_dir: '',
+      export_dir: '',
+      pg_dump_path: '',
+      pg_restore_path: '',
     },
   }
 }

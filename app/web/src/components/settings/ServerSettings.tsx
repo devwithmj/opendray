@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import {
   AlertTriangle,
+  Archive,
   Eye,
   EyeOff,
   Loader2,
@@ -31,6 +32,10 @@ import {
   probeEmbeddingEndpoint,
   type ProbeResult,
 } from '@/lib/memory'
+import {
+  type BackupStatusReport,
+  fetchBackupStatus,
+} from '@/lib/backup'
 
 import { LogViewer } from './LogViewer'
 import { PathInput } from './PathInput'
@@ -45,6 +50,7 @@ export const SERVER_SECTIONS = [
   { id: 'vault', title: 'Vault', desc: 'Notes, skills, and git-versioned root.' },
   { id: 'mcp', title: 'MCP registry', desc: 'Server registry + secrets.' },
   { id: 'memory', title: 'Memory', desc: 'Cross-CLI persistent memory subsystem.' },
+  { id: 'backup', title: 'Backup', desc: 'Encrypted DB backups, restore, and admin data exports.' },
   { id: 'claude', title: 'Storage · Claude', desc: 'Where Claude transcripts live on disk.' },
   { id: 'codex', title: 'Storage · Codex', desc: 'Codex sessions root.' },
   { id: 'gemini', title: 'Storage · Gemini', desc: 'Gemini per-project tmp + projects.json.' },
@@ -61,6 +67,7 @@ const RESTART_REQUIRED_SECTIONS: Record<ServerSectionId, boolean> = {
   vault: true,
   mcp: true,
   memory: true, // backend / store wiring is read once at app.New
+  backup: true, // pg_dump path + cipher are bound at NewService
   claude: false, // history paths are read on each request, no restart needed
   codex: false,
   gemini: false,
@@ -982,6 +989,9 @@ function SectionForm({
         </div>
       )
 
+    case 'backup':
+      return <BackupSection draft={draft} setDraft={setDraft} visible={visible} />
+
     case 'claude':
       return (
         <FormGrid>
@@ -1373,6 +1383,9 @@ function mergeSection(
     case 'memory':
       out.memory = src.memory
       break
+    case 'backup':
+      out.backup = src.backup
+      break
     case 'claude':
       out.providers = {
         ...out.providers,
@@ -1602,6 +1615,188 @@ function ProbeResultLine({
           an embedding model loaded — check your local server.
         </p>
       )}
+    </div>
+  )
+}
+
+// BackupSection renders the Settings → Backup panel: feature
+// status (env-controlled, read-only) + path overrides (config.toml,
+// require restart). The actual backup operations live at /backups.
+function BackupSection({
+  draft,
+  setDraft,
+  visible,
+}: {
+  draft: ServerConfig
+  setDraft: React.Dispatch<React.SetStateAction<ServerConfig>>
+  visible: (label: string, hint?: string) => boolean
+}) {
+  const c = draft
+
+  // Status is best-effort — if the backup feature is disabled
+  // (404), we still show the form so the operator can configure
+  // paths and then enable via env on next restart.
+  const { data: status } = useQuery<BackupStatusReport | null>({
+    queryKey: ['backup-status'],
+    queryFn: fetchBackupStatus,
+    retry: false,
+  })
+
+  return (
+    <div className="flex flex-col gap-8">
+      <FormGroup heading="Status">
+        <div className="rounded-md border border-border bg-card/30 p-3 text-[12px] flex flex-col gap-2">
+          {status === null && (
+            <div className="flex items-start gap-2">
+              <Archive className="size-3.5 mt-0.5 text-state-idle" />
+              <div>
+                <div className="font-medium">Feature disabled</div>
+                <div className="text-muted-foreground mt-0.5">
+                  Set <code className="text-foreground">OPENDRAY_BACKUP_ENABLED=1</code>{' '}
+                  + <code className="text-foreground">OPENDRAY_BACKUP_KEY=&lt;passphrase&gt;</code>{' '}
+                  in opendray's environment, then restart. The
+                  master passphrase is env-only — it never touches
+                  config.toml.
+                </div>
+              </div>
+            </div>
+          )}
+          {status && (
+            <>
+              <Row label="Status">
+                <span className="text-state-running">enabled</span>
+              </Row>
+              <Row label="Key fingerprint">
+                <code className="text-foreground">{status.key_fingerprint}</code>
+                <span className="ml-2 text-[10.5px] text-muted-foreground">
+                  record this in your secrets manager — losing it
+                  means losing decrypt access to all prior backups
+                </span>
+              </Row>
+              <Row label="pg_dump">
+                {status.ok ? (
+                  <code className="text-foreground">{status.pg_dump_version}</code>
+                ) : (
+                  <span className="text-state-failed">
+                    {status.pg_dump_error || 'unavailable'}
+                  </span>
+                )}
+              </Row>
+              <Row label="pg_restore">
+                <code className="text-foreground">
+                  {status.pg_restore_version || '(not resolved)'}
+                </code>
+              </Row>
+              <div className="pt-1 border-t border-border/50 flex items-center justify-between">
+                <Link
+                  to="/backups"
+                  className="text-[11.5px] underline text-accent"
+                >
+                  Open Backups page →
+                </Link>
+                <Link
+                  to="/export"
+                  className="text-[11.5px] underline text-accent"
+                >
+                  Open Export / Import →
+                </Link>
+              </div>
+            </>
+          )}
+        </div>
+      </FormGroup>
+
+      <FormGroup heading="Storage paths (config.toml — restart to apply)">
+        {visible('Local backup directory', 'Where local-target bundles are written') && (
+          <FieldRow
+            label="Local backup directory"
+            hint="Root for the auto-created `local` target. Empty = ~/.opendray/backups. Restart required."
+            tomlKey="backup.local_dir"
+          >
+            <PathInput
+              value={c.backup.local_dir}
+              onChange={(v) =>
+                setDraft({ ...draft, backup: { ...c.backup, local_dir: v } })
+              }
+              placeholder="~/.opendray/backups"
+            />
+          </FieldRow>
+        )}
+        {visible('Export directory', 'Where /export bundles are staged') && (
+          <FieldRow
+            label="Export directory"
+            hint="Where one-shot export zips are staged on disk. Empty = ~/.opendray/exports. Bundles auto-expire after 24h. Restart required."
+            tomlKey="backup.export_dir"
+          >
+            <PathInput
+              value={c.backup.export_dir}
+              onChange={(v) =>
+                setDraft({ ...draft, backup: { ...c.backup, export_dir: v } })
+              }
+              placeholder="~/.opendray/exports"
+            />
+          </FieldRow>
+        )}
+      </FormGroup>
+
+      <FormGroup heading="PostgreSQL client binaries (config.toml — restart to apply)">
+        {visible('pg_dump path', 'Override the resolved pg_dump binary') && (
+          <FieldRow
+            label="pg_dump path"
+            hint="Absolute path to pg_dump. Major version must be ≥ the server's. Empty = first pg_dump on PATH. Use this when brew keg-only / multiple PG versions coexist."
+            tomlKey="backup.pg_dump_path"
+          >
+            <PathInput
+              value={c.backup.pg_dump_path}
+              onChange={(v) =>
+                setDraft({ ...draft, backup: { ...c.backup, pg_dump_path: v } })
+              }
+              placeholder="/opt/homebrew/opt/postgresql@17/bin/pg_dump"
+            />
+          </FieldRow>
+        )}
+        {visible('pg_restore path', 'Override the resolved pg_restore binary') && (
+          <FieldRow
+            label="pg_restore path"
+            hint="Absolute path to pg_restore for the /backups/restore flow. Same major-version rule as pg_dump."
+            tomlKey="backup.pg_restore_path"
+          >
+            <PathInput
+              value={c.backup.pg_restore_path}
+              onChange={(v) =>
+                setDraft({
+                  ...draft,
+                  backup: { ...c.backup, pg_restore_path: v },
+                })
+              }
+              placeholder="/opt/homebrew/opt/postgresql@17/bin/pg_restore"
+            />
+          </FieldRow>
+        )}
+      </FormGroup>
+
+      <FormGroup heading="What's in a backup?">
+        <div className="text-[12px] text-muted-foreground">
+          Each backup is a <code>pg_dump --format=custom</code> of every
+          opendray table (sessions, integrations, memories, audit_log,
+          etc.) plus a <code>manifest.json</code> and (optionally) the
+          live <code>config.toml</code>. The full live inventory with
+          row counts is one click away on the{' '}
+          <Link to="/backups" className="underline text-accent">
+            Backups page
+          </Link>{' '}
+          (top "What's in a backup?" panel).
+        </div>
+      </FormGroup>
+    </div>
+  )
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline gap-3">
+      <span className="w-32 text-muted-foreground">{label}</span>
+      <span className="flex-1">{children}</span>
     </div>
   )
 }
