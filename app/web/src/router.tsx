@@ -101,6 +101,9 @@ const settingsRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: '/settings',
   component: SettingsPage,
+  validateSearch: (search) => ({
+    section: typeof search.section === 'string' ? search.section : undefined,
+  }),
 })
 
 const backupsRoute = createRoute({

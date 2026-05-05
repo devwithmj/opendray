@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useSearch } from '@tanstack/react-router'
 import {
   Sun,
   Moon,
@@ -61,9 +62,38 @@ const TOP_GROUPS: {
   },
 ]
 
+const TOP_SECTION_KEYS = new Set<string>([
+  'appearance',
+  'font',
+  'account',
+  'system',
+  'about',
+])
+
+function isValidTopSection(s: string | undefined): s is TopSection {
+  if (!s) return false
+  if (TOP_SECTION_KEYS.has(s)) return true
+  if (s.startsWith('server.')) {
+    return SERVER_SECTIONS.some((x) => `server.${x.id}` === s)
+  }
+  return false
+}
+
 export function SettingsPage() {
-  const [active, setActive] = useState<TopSection>('appearance')
+  // Deep-link: /settings?section=server.memory selects that section on
+  // mount. The Memory page "Configuration →" button uses this so users
+  // land on the memory config instead of the default Appearance.
+  const sp = useSearch({ strict: false }) as { section?: string }
+  const initialSection = isValidTopSection(sp.section) ? sp.section : 'appearance'
+  const [active, setActive] = useState<TopSection>(initialSection)
   const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    if (isValidTopSection(sp.section) && sp.section !== active) {
+      setActive(sp.section)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sp.section])
 
   const username = useAuth((s) => s.username)
   const expiresAt = useAuth((s) => s.expiresAt)
@@ -79,7 +109,7 @@ export function SettingsPage() {
   })
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="flex h-full min-h-0 overflow-hidden">
       {/* Sidebar */}
       <aside className="w-60 shrink-0 border-r border-border bg-background flex flex-col">
         <div className="px-5 pt-6 pb-3">

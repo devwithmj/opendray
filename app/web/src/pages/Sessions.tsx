@@ -167,9 +167,18 @@ export function SessionsPage() {
 
   const termRef = useRef<TerminalHandle>(null)
 
+  // sessionListCollapsed is persisted in localStorage. The toggle
+  // button lives inside WorkbenchHeader, which only renders when a
+  // session is selected. If a user collapses the list and then
+  // closes/ends every session, they end up locked out of the list
+  // forever (EmptyWorkbench has no toggle). Override: always show
+  // the list when there's nothing currently selected, so empty
+  // state stays navigable.
+  const showList = !listCollapsed || !currentId
+
   return (
     <div className="h-full flex">
-      {!listCollapsed && (
+      {showList && (
         <SessionList onSpawn={() => setSpawnOpen(true)} onOpen={handleOpen} />
       )}
 

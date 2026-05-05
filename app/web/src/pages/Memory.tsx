@@ -24,7 +24,9 @@ export function MemoryPage() {
             </p>
           </div>
           <Button asChild variant="outline" size="sm" className="h-8 text-[11px]">
-            <Link to="/settings">Configuration →</Link>
+            <Link to="/settings" search={{ section: 'server.memory' }}>
+              Configuration →
+            </Link>
           </Button>
         </div>
       </header>
