@@ -489,7 +489,9 @@ func (s *store) ResetStaleRunning(ctx context.Context, cutoff time.Duration) (in
 }
 
 const backupSelectStmt = `
-	SELECT id, schedule_id, target_id, status, triggered_by,
+	SELECT id, schedule_id,
+	       COALESCE(target_id, '') AS target_id,
+	       status, triggered_by,
 	       started_at, finished_at, bytes,
 	       COALESCE(sha256, ''),
 	       encrypted,
@@ -502,6 +504,10 @@ const backupSelectStmt = `
 	       COALESCE(metadata, '{}'::jsonb)
 	  FROM backups`
 
+// scanBackup reads a row produced by backupSelectStmt. target_id
+// is COALESCE'd to '' so we can scan into a plain string — empty
+// string means "this row's target was deleted" (post-migration
+// 0017 nullable column).
 func scanBackup(row rowScanner) (Backup, error) {
 	var (
 		b           Backup
