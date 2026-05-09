@@ -8,10 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- ADR 0016 (Proposed): backup-format v2 design for per-install PBKDF2
-  salt. Captures the four binding decisions (in-header storage,
-  version-byte bump 1→2, per-Seal salt provenance, indefinite v1
-  read compat) and the three-PR rollout. Implementation pending.
+
 - LICENSE file (Apache 2.0) — previously declared in README only.
 - SECURITY.md — threat model, default posture, deployment checklist, report channel.
 - CONTRIBUTING.md — dev setup, test commands, PR + commit conventions.
