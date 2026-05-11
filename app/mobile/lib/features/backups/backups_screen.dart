@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -25,6 +26,10 @@ class BackupsScreen extends ConsumerStatefulWidget {
 // instead of four separate AsyncValues means the banner / summary /
 // list paint together — no progressive-load flicker on a phone
 // where the whole screen fits above the fold.
+//
+// `status.enabled` decides which sub-tree to render: false → either
+// SetupWizard (configured=false) or RestartPrompt (configured=true,
+// requires_restart=true), true → normal Backups dashboard.
 class _PageData {
   _PageData({
     required this.status,
@@ -37,6 +42,15 @@ class _PageData {
   final List<BackupRow> rows;
   final List<BackupTarget> targets;
   final List<BackupSchedule> schedules;
+
+  // True when the backup feature isn't running this process — i.e.
+  // the operator hasn't set it up yet, or set it up but hasn't
+  // restarted.
+  bool get featureOff => !status.enabled;
+  // True when setup has happened (key file or env var present) but
+  // the feature isn't yet running — the operator needs to bounce
+  // the gateway.
+  bool get awaitingRestart => status.requiresRestart;
 }
 
 class _BackupsScreenState extends ConsumerState<BackupsScreen> {
@@ -63,24 +77,35 @@ class _BackupsScreenState extends ConsumerState<BackupsScreen> {
     setState(() => _state = const AsyncValue.loading());
     try {
       final api = ref.read(backupsApiProvider);
-      // Fan out — four cheap GETs, ~200ms total on a LAN. If the
-      // status endpoint dies the whole screen errors; if a sub-list
-      // fails we still want a usable header, so non-status calls
-      // degrade to empty.
+      // Status first — its `enabled` field decides whether we even
+      // bother fetching the rest. When the feature isn't running
+      // the data endpoints aren't mounted either, and fanning out
+      // three more 404s just to throw them away is wasteful (and
+      // noisy in the server logs).
+      final status = await api.status();
+      if (!mounted) return;
+      if (!status.enabled) {
+        setState(() => _state = AsyncValue.data(_PageData(
+              status: status,
+              rows: const [],
+              targets: const [],
+              schedules: const [],
+            )));
+        return;
+      }
       final results = await Future.wait<Object>([
-        api.status(),
         api.list(limit: 50).catchError((_) => <BackupRow>[]),
         api.listTargets().catchError((_) => <BackupTarget>[]),
         api.listSchedules().catchError((_) => <BackupSchedule>[]),
       ]);
       if (!mounted) return;
-      final rows = (results[1] as List<BackupRow>)
+      final rows = (results[0] as List<BackupRow>)
         ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
       setState(() => _state = AsyncValue.data(_PageData(
-            status: results[0] as BackupStatusReport,
+            status: status,
             rows: rows,
-            targets: results[2] as List<BackupTarget>,
-            schedules: results[3] as List<BackupSchedule>,
+            targets: results[1] as List<BackupTarget>,
+            schedules: results[2] as List<BackupSchedule>,
           )));
     } on ApiException catch (e) {
       if (mounted) {
@@ -103,16 +128,27 @@ class _BackupsScreenState extends ConsumerState<BackupsScreen> {
     }
     try {
       final api = ref.read(backupsApiProvider);
-      final results = await Future.wait<Object>([
-        api.status(),
-        api.list(limit: 50),
-      ]);
+      final status = await api.status();
       if (!mounted) return;
-      final rows = (results[1] as List<BackupRow>)
-        ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
+      if (!status.enabled) {
+        // Feature was just disabled on the server between loads
+        // (or this is the post-setup pre-restart window). Drop
+        // back to the setup/restart view rather than keep stale
+        // rows.
+        setState(() => _state = AsyncValue.data(_PageData(
+              status: status,
+              rows: const [],
+              targets: const [],
+              schedules: const [],
+            )));
+        return;
+      }
+      final list = await api.list(limit: 50);
+      if (!mounted) return;
+      list.sort((a, b) => b.startedAt.compareTo(a.startedAt));
       setState(() => _state = AsyncValue.data(_PageData(
-            status: results[0] as BackupStatusReport,
-            rows: rows,
+            status: status,
+            rows: list,
             targets: current.targets,
             schedules: current.schedules,
           )));
@@ -438,19 +474,24 @@ class _BackupsScreenState extends ConsumerState<BackupsScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => _ErrorView(error: e.toString(), onRetry: _load),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        // Disable Run now when pg_dump is broken or no targets are
-        // configured — clicking it would just produce a failed row.
-        onPressed: _canRunNow() ? _runNow : null,
-        icon: _running
-            ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.cloud_upload_outlined),
-        label: Text(_running ? 'Queueing…' : 'Run now'),
-      ),
+      // Hide the FAB entirely when the feature is off — it can't do
+      // anything useful and the setup/restart view already gives the
+      // operator the next step.
+      floatingActionButton: _state.valueOrNull?.featureOff ?? true
+          ? null
+          : FloatingActionButton.extended(
+              // Greyed-out when pg_dump is broken or no targets are
+              // configured — clicking would just produce a failed row.
+              onPressed: _canRunNow() ? _runNow : null,
+              icon: _running
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.cloud_upload_outlined),
+              label: Text(_running ? 'Queueing…' : 'Run now'),
+            ),
     );
   }
 
@@ -458,12 +499,24 @@ class _BackupsScreenState extends ConsumerState<BackupsScreen> {
     if (_running) return false;
     final data = _state.valueOrNull;
     if (data == null) return false;
-    if (!data.status.ok) return false;
-    final hasEnabledTarget = data.targets.any((t) => t.enabled);
-    return hasEnabledTarget;
+    if (!data.status.enabled || !data.status.ok) return false;
+    return data.targets.any((t) => t.enabled);
   }
 
   Widget _buildBody(_PageData data) {
+    if (data.featureOff) {
+      if (data.awaitingRestart) {
+        return _RestartRequiredView(
+          status: data.status,
+          onRecheck: _load,
+        );
+      }
+      return _SetupWizardView(
+        status: data.status,
+        onComplete: _load,
+      );
+    }
+    final status = data.status;
     final list = data.rows;
     // Always render a scrollable surface so pull-to-refresh works
     // even when the list is empty.
@@ -472,9 +525,8 @@ class _BackupsScreenState extends ConsumerState<BackupsScreen> {
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          _StatusBanner(status: data.status),
+          _StatusBanner(status: status),
           _SummaryCard(
-            status: data.status,
             targets: data.targets,
             schedules: data.schedules,
             rows: data.rows,
@@ -544,6 +596,423 @@ class _BackupsScreenState extends ConsumerState<BackupsScreen> {
 enum _DetailAction { close, delete }
 
 enum _AppBarAction { schedules, targets }
+
+// Rendered when the operator has already set up a passphrase (env
+// var present OR key file on disk) but the feature isn't running
+// in *this* process — i.e. they POSTed /backup-setup, we wrote the
+// file, and now they need to bounce the gateway to pick it up. The
+// "Check again" button is the same _load callback as the rest of
+// the screen; after a real restart, the next refresh transitions
+// the page to the live dashboard.
+class _RestartRequiredView extends StatelessWidget {
+  const _RestartRequiredView({required this.status, required this.onRecheck});
+  final BackupStatusReport status;
+  final Future<void> Function() onRecheck;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.outline;
+    return RefreshIndicator(
+      onRefresh: onRecheck,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(24),
+        children: [
+          const SizedBox(height: 32),
+          Icon(Icons.restart_alt, size: 56, color: theme.colorScheme.primary),
+          const SizedBox(height: 16),
+          Text(
+            'Restart opendray to activate backups',
+            style: theme.textTheme.titleMedium,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Your passphrase is saved. The gateway only loads it at '
+            'startup, so backups stay off until you bounce the process.',
+            style: theme.textTheme.bodySmall?.copyWith(color: muted),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+          if (status.configuredVia == 'file' && status.keyFilePath.isNotEmpty)
+            _kvBox(context, label: 'Key file', value: status.keyFilePath),
+          if (status.configuredVia == 'env')
+            _kvBox(
+              context,
+              label: 'Configured via',
+              value: 'OPENDRAY_BACKUP_KEY env var',
+            ),
+          const SizedBox(height: 24),
+          Center(
+            child: FilledButton.icon(
+              onPressed: onRecheck,
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Check again'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _kvBox(BuildContext context,
+      {required String label, required String value}) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: theme.dividerColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.outline)),
+          const SizedBox(height: 4),
+          SelectableText(
+            value,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// First-time setup wizard. Two modes:
+//   Generate — server picks a base64 32-byte key and returns it
+//   once; the operator must save it before continuing.
+//   Paste — operator types/pastes their own (min 20 chars).
+//
+// Both write to ~/.opendray/secrets/backup.key (0600) and require
+// a gateway restart to activate. The _RestartRequiredView sibling
+// takes over once the file is on disk; the operator may have to
+// physically restart opendray before the page transitions to the
+// live dashboard.
+class _SetupWizardView extends ConsumerStatefulWidget {
+  const _SetupWizardView({required this.status, required this.onComplete});
+  final BackupStatusReport status;
+  final Future<void> Function() onComplete;
+
+  @override
+  ConsumerState<_SetupWizardView> createState() => _SetupWizardViewState();
+}
+
+enum _SetupMode { generate, paste }
+
+class _SetupWizardViewState extends ConsumerState<_SetupWizardView> {
+  _SetupMode _mode = _SetupMode.generate;
+  final _pasteCtrl = TextEditingController();
+  bool _submitting = false;
+  // Result of a successful generate call — must be displayed once
+  // and acknowledged by the operator before we transition to the
+  // restart screen. Null otherwise.
+  BackupSetupResult? _generated;
+  bool _ackSaved = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _pasteCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      final api = ref.read(backupsApiProvider);
+      final result = _mode == _SetupMode.generate
+          ? await api.setup(mode: 'generate')
+          : await api.setup(
+              mode: 'paste',
+              passphrase: _pasteCtrl.text.trim(),
+            );
+      if (!mounted) return;
+      if (result.passphrase != null) {
+        // Generate path — keep on this screen, show the passphrase
+        // for save confirmation. Continue button finalises the
+        // flow by triggering a parent reload.
+        setState(() {
+          _generated = result;
+          _submitting = false;
+        });
+      } else {
+        // Paste path — caller already knows their passphrase,
+        // no save-confirm step needed.
+        await widget.onComplete();
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.message;
+          _submitting = false;
+        });
+      }
+    } on Object catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _submitting = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.outline;
+
+    if (_generated != null) {
+      return _generatedView(context, _generated!);
+    }
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(20),
+      children: [
+        const SizedBox(height: 16),
+        Icon(Icons.lock_outlined, size: 48, color: theme.colorScheme.primary),
+        const SizedBox(height: 12),
+        Text(
+          'Set up backups',
+          style: theme.textTheme.titleMedium,
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Choose a master passphrase. opendray uses it to encrypt every '
+          'backup blob. Lose it and your backups become unrecoverable, '
+          'so save it in a password manager (Vaultwarden, 1Password) '
+          'before continuing.',
+          style: theme.textTheme.bodySmall?.copyWith(color: muted),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 20),
+        SegmentedButton<_SetupMode>(
+          segments: const [
+            ButtonSegment(
+              value: _SetupMode.generate,
+              icon: Icon(Icons.casino_outlined, size: 18),
+              label: Text('Generate'),
+            ),
+            ButtonSegment(
+              value: _SetupMode.paste,
+              icon: Icon(Icons.edit_outlined, size: 18),
+              label: Text('Paste'),
+            ),
+          ],
+          selected: {_mode},
+          onSelectionChanged: (s) => setState(() => _mode = s.first),
+        ),
+        const SizedBox(height: 20),
+        if (_mode == _SetupMode.generate)
+          _generateExplainer(context)
+        else
+          _pasteForm(context),
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.error.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                  color: theme.colorScheme.error.withValues(alpha: 0.4)),
+            ),
+            child: Text(
+              _error!,
+              style: TextStyle(color: theme.colorScheme.error, fontSize: 12),
+            ),
+          ),
+        ],
+        const SizedBox(height: 20),
+        FilledButton.icon(
+          onPressed: _submitting ? null : _submit,
+          icon: _submitting
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.check, size: 18),
+          label: Text(_submitting
+              ? 'Saving…'
+              : _mode == _SetupMode.generate
+                  ? 'Generate and save'
+                  : 'Save passphrase'),
+        ),
+        const SizedBox(height: 20),
+        if (widget.status.keyFilePath.isNotEmpty)
+          Text(
+            'Key file will be written to:\n${widget.status.keyFilePath}',
+            style: theme.textTheme.bodySmall?.copyWith(color: muted),
+            textAlign: TextAlign.center,
+          ),
+      ],
+    );
+  }
+
+  Widget _generateExplainer(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.outline;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: theme.dividerColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.shield_outlined, size: 18, color: muted),
+              const SizedBox(width: 8),
+              const Text('256-bit random key',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Server generates a cryptographically random passphrase, '
+            'shows it to you once. You must copy it to a password manager '
+            'before continuing — there is no recovery path.',
+            style: theme.textTheme.bodySmall?.copyWith(color: muted),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _pasteForm(BuildContext context) {
+    final theme = Theme.of(context);
+    return TextField(
+      controller: _pasteCtrl,
+      obscureText: false,
+      maxLines: 2,
+      minLines: 1,
+      decoration: InputDecoration(
+        labelText: 'Your passphrase',
+        hintText: 'At least 20 characters',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        helperText: 'Recommended: 40+ chars from a password manager',
+        helperStyle: TextStyle(color: theme.colorScheme.outline),
+      ),
+      style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+    );
+  }
+
+  Widget _generatedView(BuildContext context, BackupSetupResult result) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.outline;
+    final pass = result.passphrase ?? '';
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(20),
+      children: [
+        const SizedBox(height: 16),
+        Icon(Icons.warning_amber_rounded,
+            size: 48, color: Colors.amber.shade700),
+        const SizedBox(height: 12),
+        Text(
+          'Save this passphrase NOW',
+          style: theme.textTheme.titleMedium,
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'This is shown ONCE. It will not be retrievable from opendray '
+          'or anywhere else. Copy it into a password manager before '
+          'tapping Continue.',
+          style: theme.textTheme.bodySmall?.copyWith(color: muted),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 20),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest
+                .withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+                color: theme.colorScheme.primary.withValues(alpha: 0.5)),
+          ),
+          child: SelectableText(
+            pass,
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 14,
+              height: 1.3,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  // Use the system clipboard. Selection is mostly
+                  // redundant since the SelectableText supports tap-
+                  // and-hold, but operators on phones with awkward
+                  // selection (especially with the on-screen
+                  // keyboard up) appreciate the explicit button.
+                  await _copyToClipboard(context, pass);
+                },
+                icon: const Icon(Icons.copy, size: 16),
+                label: const Text('Copy'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (result.keyFilePath.isNotEmpty)
+          Text(
+            'Saved to: ${result.keyFilePath}',
+            style: theme.textTheme.bodySmall?.copyWith(color: muted),
+            textAlign: TextAlign.center,
+          ),
+        const SizedBox(height: 20),
+        CheckboxListTile(
+          value: _ackSaved,
+          onChanged: (v) => setState(() => _ackSaved = v ?? false),
+          dense: true,
+          title: const Text(
+            'I have saved this passphrase to my password manager',
+            style: TextStyle(fontSize: 13),
+          ),
+        ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          onPressed: _ackSaved ? () => widget.onComplete() : null,
+          icon: const Icon(Icons.arrow_forward, size: 18),
+          label: const Text('Continue'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _copyToClipboard(BuildContext context, String text) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Passphrase copied to clipboard'),
+        duration: Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+}
 
 // Feature-health banner. Renders red when pg_dump is unavailable
 // (with the underlying error so the operator can fix it from the
@@ -638,12 +1107,10 @@ class _StatusBanner extends StatelessWidget {
 // where it makes sense.
 class _SummaryCard extends StatelessWidget {
   const _SummaryCard({
-    required this.status,
     required this.targets,
     required this.schedules,
     required this.rows,
   });
-  final BackupStatusReport status;
   final List<BackupTarget> targets;
   final List<BackupSchedule> schedules;
   final List<BackupRow> rows;
