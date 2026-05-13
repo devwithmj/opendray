@@ -77,6 +77,22 @@ type MemoryConfig struct {
 	// and dedupe-on-insert). Empty → 0.7.
 	SimilarityThreshold float64 `toml:"similarity_threshold" json:"similarity_threshold"`
 
+	// DedupThreshold (0..1) — M11. When memory_store finds an
+	// existing memory in the same scope with cosine similarity ≥
+	// this value, it merges into that row (re-embed + bump
+	// metadata.deduped_count) instead of inserting a new one.
+	// 0 disables dedup; sensible values: ~0.85 for dense embedders
+	// (bge-m3 / ada-002), ~0.4 for BM25. Empty → 0 (off — preserves
+	// historical behaviour for fresh installs).
+	DedupThreshold float64 `toml:"dedup_threshold" json:"dedup_threshold"`
+
+	// Gatekeeper (M12) — pre-write LLM judge.
+	Gatekeeper MemoryGatekeeperConfig `toml:"gatekeeper" json:"gatekeeper"`
+
+	// Cleaner (M13) — periodic LLM librarian that proposes
+	// deletions / merges for existing memories.
+	Cleaner MemoryCleanerConfig `toml:"cleaner" json:"cleaner"`
+
 	// Local + HTTP backends. Only the active one matters.
 	Local MemoryLocalConfig `toml:"local" json:"local"`
 	HTTP  MemoryHTTPConfig  `toml:"http" json:"http"`
@@ -131,6 +147,74 @@ type MemoryScopeConfig struct {
 	// pass one explicitly. "session" / "project" / "global".
 	// Empty → "project".
 	Default string `toml:"default" json:"default"`
+}
+
+// MemoryCleanerConfig (M13) — the periodic LLM librarian. Off by
+// default; flip Enabled when an operator wants automated review.
+// The HTTP endpoints (/memory/cleanup/*) work without the
+// scheduler so operators can run one-off cleanups by hand even
+// when auto-runs are off.
+type MemoryCleanerConfig struct {
+	// Enabled toggles the auto-run scheduler. The HTTP endpoints
+	// (manual /memory/cleanup/run) work either way.
+	Enabled bool `toml:"enabled" json:"enabled"`
+
+	// SummarizerID pins which configured summarizer provider runs
+	// the librarian judgement. Empty → registry default. Same field
+	// shape as the gatekeeper.
+	SummarizerID string `toml:"summarizer_id" json:"summarizer_id"`
+
+	// IntervalSeconds between automatic sweeps. Empty / 0 → 86400
+	// (24h). Set to a small value (e.g. 300 = 5 min) for testing.
+	IntervalSeconds int `toml:"interval_seconds" json:"interval_seconds"`
+
+	// InitialDelaySeconds before the first sweep. Empty / 0 → 300
+	// (5 min) so the process is warmed up before judging anything.
+	InitialDelaySeconds int `toml:"initial_delay_seconds" json:"initial_delay_seconds"`
+
+	// BatchSize caps memories reviewed per LLM call. Empty / 0 → 30.
+	BatchSize int `toml:"batch_size" json:"batch_size"`
+
+	// MinAgeHours skips memories younger than this many hours so
+	// the cleaner never reviews something the user just wrote.
+	// Empty / 0 → 24.
+	MinAgeHours int `toml:"min_age_hours" json:"min_age_hours"`
+
+	// SkipIfDecidedWithinHours avoids re-proposing decisions for the
+	// same memory_id within this window after an earlier verdict.
+	// Empty / 0 → 168 (7 days).
+	SkipIfDecidedWithinHours int `toml:"skip_if_decided_within_hours" json:"skip_if_decided_within_hours"`
+
+	// CallTimeoutMs caps each LLM call. Reasoning models on local
+	// LM Studio can take 10-30s for a 30-row batch. Empty / 0 →
+	// 60000 (60s).
+	CallTimeoutMs int `toml:"call_timeout_ms" json:"call_timeout_ms"`
+
+	// IncludeGlobalScope sweeps the global memory scope in addition
+	// to project scope. Default false — global memories are usually
+	// operator-curated and a librarian sweep there feels invasive
+	// until the operator has trust in the cleaner.
+	IncludeGlobalScope bool `toml:"include_global_scope" json:"include_global_scope"`
+}
+
+// MemoryGatekeeperConfig (M12) — pre-write LLM judge that decides
+// whether a memory_store call carries a durable fact or noise.
+type MemoryGatekeeperConfig struct {
+	// Enabled flips the feature. Default false — the gatekeeper
+	// adds a per-store LLM round-trip (~200ms with LM Studio), and
+	// noisy writes are a tolerable problem until operators see the
+	// payoff in their memory list.
+	Enabled bool `toml:"enabled" json:"enabled"`
+
+	// SummarizerID picks which configured summarizer provider runs
+	// the judgement. Empty → use the registry default (whatever
+	// memory_summarizer_providers.is_default = true points at).
+	SummarizerID string `toml:"summarizer_id" json:"summarizer_id"`
+
+	// MaxLatencyMs caps the per-call timeout. Above this the
+	// gatekeeper logs and degrades to "allow" — better to let
+	// the write through than block on a slow LLM. Empty → 2000.
+	MaxLatencyMs int `toml:"max_latency_ms" json:"max_latency_ms"`
 }
 
 type ProvidersConfig struct {

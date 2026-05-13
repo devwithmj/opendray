@@ -39,14 +39,18 @@ import (
 	fsapi "github.com/opendray/opendray-v2/internal/fs"
 	"github.com/opendray/opendray-v2/internal/gateway"
 	gitapi "github.com/opendray/opendray-v2/internal/git"
+	"github.com/opendray/opendray-v2/internal/gitactivity"
 	githost "github.com/opendray/opendray-v2/internal/githost"
 	"github.com/opendray/opendray-v2/internal/integration"
 	mcpapi "github.com/opendray/opendray-v2/internal/mcp"
 	"github.com/opendray/opendray-v2/internal/memory"
 	"github.com/opendray/opendray-v2/internal/memory/capture"
+	"github.com/opendray/opendray-v2/internal/memory/cleaner"
 	"github.com/opendray/opendray-v2/internal/memory/injector"
 	"github.com/opendray/opendray-v2/internal/memory/summarizer"
 	notesapi "github.com/opendray/opendray-v2/internal/notes"
+	"github.com/opendray/opendray-v2/internal/projectdoc"
+	"github.com/opendray/opendray-v2/internal/projectscan"
 	searchapi "github.com/opendray/opendray-v2/internal/search"
 	"github.com/opendray/opendray-v2/internal/session"
 	"github.com/opendray/opendray-v2/internal/settings"
@@ -71,9 +75,12 @@ type App struct {
 	// liveBackup owns the backup Service + scheduler. Always non-nil
 	// after New returns, but Service() returns nil when the feature
 	// is off. Disarm on shutdown to stop the scheduler goroutine.
-	liveBackup    *backup.LiveBackup
-	captureEngine *capture.Engine // ambient memory capture loop
-	server        *http.Server
+	liveBackup           *backup.LiveBackup
+	captureEngine        *capture.Engine // ambient memory capture loop
+	journaler            *projectdoc.Journaler
+	cleanerScheduler     *cleaner.Scheduler // optional; nil when scheduler is off
+	gitActivityScheduler *gitactivity.Scheduler
+	server               *http.Server
 }
 
 // New wires the runtime dependencies but does not start any goroutines.
@@ -355,6 +362,61 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		WithIntegrationLookup(&summarizerIntegrationLookup{svc: intgrSvc})
 	summarizerHandlers := summarizer.NewHandlers(summarizerRegistry, summarizerStore, log)
 
+	// M12 — Gatekeeper. Wired late because the summarizer registry
+	// only exists after backup cipher + summarizer store are up.
+	// When operators set [memory.gatekeeper] enabled = true, every
+	// memory_store call gets a pre-write LLM judgement; otherwise
+	// behaviour matches pre-M12 (no extra round-trip).
+	if memorySvc != nil && cfg.Memory.Gatekeeper.Enabled {
+		gk := memory.NewSummarizerGatekeeper(
+			summarizerRegistry,
+			cfg.Memory.Gatekeeper.SummarizerID,
+			time.Duration(cfg.Memory.Gatekeeper.MaxLatencyMs)*time.Millisecond,
+			log,
+		)
+		memorySvc.SetGatekeeper(gk)
+		log.Info("memory gatekeeper enabled",
+			"summarizer_id", cfg.Memory.Gatekeeper.SummarizerID,
+			"max_latency_ms", cfg.Memory.Gatekeeper.MaxLatencyMs)
+	}
+
+	// M13 — Cleaner. Independent of the gatekeeper: even installs
+	// that don't pre-judge writes can benefit from periodic review
+	// of accumulated noise. We always wire the service when memory
+	// + summarizer are up so the HTTP endpoints work; the scheduler
+	// only fires when [memory.cleaner] enabled = true.
+	var (
+		cleanerSvc       *cleaner.Service
+		cleanerHandlers  *cleaner.Handlers
+		cleanerScheduler *cleaner.Scheduler
+	)
+	if memorySvc != nil {
+		cc := cfg.Memory.Cleaner
+		cleanerSvc = cleaner.NewService(
+			st.Pool(), memorySvc, summarizerRegistry, summarizerStore,
+			cleaner.Config{
+				SummarizerID:        cc.SummarizerID,
+				BatchSize:           cc.BatchSize,
+				MinAge:              time.Duration(cc.MinAgeHours) * time.Hour,
+				SkipIfDecidedWithin: time.Duration(cc.SkipIfDecidedWithinHours) * time.Hour,
+				CallTimeout:         time.Duration(cc.CallTimeoutMs) * time.Millisecond,
+			},
+			log,
+		)
+		cleanerHandlers = cleaner.NewHandlers(cleanerSvc, log)
+		if cc.Enabled {
+			cleanerScheduler = cleaner.NewScheduler(cleanerSvc, memorySvc, cleaner.SchedulerConfig{
+				Interval:           time.Duration(cc.IntervalSeconds) * time.Second,
+				InitialDelay:       time.Duration(cc.InitialDelaySeconds) * time.Second,
+				IncludeGlobalScope: cc.IncludeGlobalScope,
+			}, log)
+			log.Info("memory cleaner scheduler enabled",
+				"interval_seconds", cc.IntervalSeconds,
+				"initial_delay_seconds", cc.InitialDelaySeconds,
+				"include_global_scope", cc.IncludeGlobalScope)
+		}
+	}
+
 	captureRuleStore := capture.NewRuleStore(st.Pool())
 	captureSessionAdapter := &captureSessionAdapter{mgr: sessionMgr}
 	captureHistoryAdapter := &captureHistoryAdapter{mgr: sessionMgr}
@@ -377,6 +439,75 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	ambientInjector := injector.New(injectorProfileStore, memorySvc, log)
 	sessionProvider.WithAmbientInjector(ambientInjector)
 	injectorHandlers := injector.NewHandlers(injectorProfileStore, log)
+
+	// Project docs / proposals / session journal — memory layers 2-4.
+	// Composed at spawn time with memory layer 5 inside the catalog
+	// adapter; here we just wire HTTP. Mounted under the dual-auth
+	// group so the auto-attached opendray-memory MCP can reach it
+	// with an integration bearer.
+	projectDocSvc := projectdoc.NewService(st.Pool(), log)
+	projectDocHandlers := projectdoc.NewHandlers(projectDocSvc, log)
+	// Inject the cross-agent goal+plan+journal banner into every
+	// spawned session's system prompt. Composed alongside the
+	// memory-layer-5 banner (ambient injector) inside the catalog
+	// adapter.
+	sessionProvider.WithProjectDocInjector(projectDocSvc)
+	// M16 — project scanner. Auto-detects tech stack + key dirs +
+	// git head at spawn time so a fresh agent doesn't have to
+	// re-index the repo. Stores the result as project_docs.kind=
+	// 'tech_stack'; RenderForSpawn includes it in the system-prompt
+	// banner. Re-scans on each spawn if the cached doc is older
+	// than 6h.
+	projectScanSvc := projectscan.NewService(projectDocSvc, log)
+	projectScanHandlers := projectscan.NewHandlers(projectScanSvc, log)
+	sessionProvider.WithProjectScanner(projectScanSvc, 6*time.Hour)
+
+	// M16c — git activity summariser. Runs `git log --stat` over
+	// the last 7 days, sends the parsed commits to an LLM (same
+	// provider as the gatekeeper / cleaner), persists the prose
+	// summary as project_docs.kind='recent_activity'. The LLM
+	// client is built once at startup from the default summariser
+	// provider — operators who add or change providers after boot
+	// must restart to pick up the new config.
+	gitActivityOpts := []gitactivity.ServiceOption{
+		gitactivity.WithWindow("7 days ago"),
+		gitactivity.WithCommitLimit(50),
+	}
+	if llm, err := buildGitActivityClient(ctx, summarizerRegistry); err != nil {
+		log.Warn("git activity LLM unavailable; falling back to raw stats", "err", err)
+	} else if llm != nil {
+		gitActivityOpts = append(gitActivityOpts, gitactivity.WithLLM(llm))
+	}
+	gitActivitySvc := gitactivity.NewService(projectDocSvc, log, gitActivityOpts...)
+	gitActivityHandlers := gitactivity.NewHandlers(gitActivitySvc, log)
+	// Spawn-time async refresh — see catalog.SessionProvider.
+	sessionProvider.WithGitActivityRefresher(gitActivitySvc, 12*time.Hour)
+	// Background scheduler (24h tick by default).
+	gitActivityScheduler := gitactivity.NewScheduler(
+		gitActivitySvc, memorySvc,
+		gitactivity.SchedulerConfig{
+			Interval:     24 * time.Hour,
+			InitialDelay: 10 * time.Minute,
+			MaxAge:       12 * time.Hour,
+		},
+		log,
+	)
+	// Auto-journal: on every session.ended / session.stopped event
+	// the Journaler writes a session_logs row so future sessions see
+	// a chronological record of what just happened in this project.
+	journaler := projectdoc.NewJournaler(
+		projectDocSvc, bus,
+		&projectdocSessionLookup{mgr: sessionMgr},
+		log,
+	)
+	// M18 — install the LLM summariser if a provider is configured.
+	// Same provider chain as gatekeeper / cleaner / gitactivity.
+	if ts, err := buildTranscriptSummariser(ctx, summarizerRegistry); err != nil {
+		log.Warn("transcript summariser unavailable; journaler writes metadata-only entries", "err", err)
+	} else if ts != nil {
+		journaler.WithSummariser(ts)
+		log.Info("transcript-aware journaler enabled (LLM-summarised session.ended)")
+	}
 
 	gw := gateway.NewServer(gateway.Deps{
 		Logger:    log,
@@ -422,6 +553,11 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 				summarizerHandlers.Mount(r)
 				captureHandlers.Mount(r)
 				injectorHandlers.Mount(r)
+				if cleanerHandlers != nil {
+					cleanerHandlers.Mount(r)
+				}
+				projectScanHandlers.Mount(r)
+				gitActivityHandlers.Mount(r)
 			})
 
 			// Dual-auth (admin OR integration API key): all business
@@ -440,6 +576,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 				cliacctHandlers.Mount(r)
 				channelHandlers.Mount(r)
 				memoryHandlers.Mount(r)
+				projectDocHandlers.Mount(r)
 				r.Get("/integrations/_events", eventsHandler.Serve)
 			})
 		},
@@ -452,26 +589,117 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	}
 
 	return &App{
-		cfg:             cfg,
-		log:             log,
-		store:           st,
-		bus:             bus,
-		sessions:        sessionMgr,
-		channels:        channelHub,
-		integrations:    intgrSvc,
-		healthCheck:     healthCheck,
-		audit:           auditSink,
-		intgrCallLogger: intgrCallLogger,
-		vaultSync:       vaultSyncer,
-		liveBackup:      liveBackup,
-		captureEngine:   captureEngine,
-		server:          srv,
+		cfg:                  cfg,
+		log:                  log,
+		store:                st,
+		bus:                  bus,
+		sessions:             sessionMgr,
+		channels:             channelHub,
+		integrations:         intgrSvc,
+		healthCheck:          healthCheck,
+		audit:                auditSink,
+		intgrCallLogger:      intgrCallLogger,
+		vaultSync:            vaultSyncer,
+		liveBackup:           liveBackup,
+		captureEngine:        captureEngine,
+		journaler:            journaler,
+		cleanerScheduler:     cleanerScheduler,
+		gitActivityScheduler: gitActivityScheduler,
+		server:               srv,
 	}, nil
 }
 
 // Migrate applies pending DB migrations and returns. Used by `opendray migrate`.
 func (a *App) Migrate(ctx context.Context) error {
 	return a.store.Migrate(ctx, a.log)
+}
+
+// buildTranscriptSummariser resolves the default summariser
+// provider and constructs an M18 transcript summariser. Returns
+// (nil, nil) when no provider exists — the journaler falls back to
+// metadata-only entries.
+func buildTranscriptSummariser(ctx context.Context, reg *summarizer.Registry) (*transcriptSummariser, error) {
+	if reg == nil {
+		return nil, nil
+	}
+	rows, err := reg.ListEnabledRows(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	pick := rows[0]
+	for _, r := range rows {
+		if r.IsDefault {
+			pick = r
+			break
+		}
+	}
+	// Force decryption of api_key by going through Build.
+	if _, err := reg.Build(ctx, pick.ID); err != nil {
+		return nil, err
+	}
+	freshRows, err := reg.ListEnabledRows(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range freshRows {
+		if r.ID == pick.ID {
+			pick = r
+			break
+		}
+	}
+	return newTranscriptSummariser(pick, pick.APIKeyPlaintext)
+}
+
+// buildGitActivityClient resolves the default summariser provider
+// (or the explicitly-pinned one) and constructs an LLM client for
+// the git activity summariser. Returns (nil, nil) when no enabled
+// provider exists — that's not an error, the service falls back to
+// raw stats.
+func buildGitActivityClient(ctx context.Context, reg *summarizer.Registry) (*gitactivity.Client, error) {
+	if reg == nil {
+		return nil, nil
+	}
+	rows, err := reg.ListEnabledRows(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var pick summarizer.ProviderRow
+	found := false
+	for _, r := range rows {
+		if r.IsDefault {
+			pick = r
+			found = true
+			break
+		}
+	}
+	if !found {
+		if len(rows) == 0 {
+			return nil, nil
+		}
+		pick = rows[0]
+	}
+	// Get plaintext api_key (decrypts ciphered keys when cipher is armed).
+	rowWithKey, gerr := reg.Build(ctx, pick.ID)
+	_ = rowWithKey // we don't need the built Provider, just the side
+	// effect of decrypting. Re-fetch the row to read APIKeyPlaintext.
+	if gerr != nil {
+		return nil, gerr
+	}
+	// Re-fetch to get the plaintext key.
+	freshRows, err := reg.ListEnabledRows(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range freshRows {
+		if r.ID == pick.ID {
+			pick = r
+			break
+		}
+	}
+	return gitactivity.NewClient(pick, pick.APIKeyPlaintext)
 }
 
 // Run starts the HTTP server, channel hub, and audit sink, then blocks
@@ -514,6 +742,28 @@ func (a *App) Run(ctx context.Context) error {
 	go func() {
 		a.captureEngine.Run(ctx)
 		close(captureDone)
+	}()
+
+	journalerDone := make(chan struct{})
+	go func() {
+		a.journaler.Run(ctx)
+		close(journalerDone)
+	}()
+
+	cleanerDone := make(chan struct{})
+	go func() {
+		if a.cleanerScheduler != nil {
+			a.cleanerScheduler.Run(ctx)
+		}
+		close(cleanerDone)
+	}()
+
+	gitActivityDone := make(chan struct{})
+	go func() {
+		if a.gitActivityScheduler != nil {
+			a.gitActivityScheduler.Run(ctx)
+		}
+		close(gitActivityDone)
 	}()
 
 	errCh := make(chan error, 1)
@@ -578,6 +828,21 @@ func (a *App) Run(ctx context.Context) error {
 	case <-captureDone:
 	case <-time.After(5 * time.Second):
 		a.log.Warn("capture engine shutdown timed out")
+	}
+	select {
+	case <-journalerDone:
+	case <-time.After(2 * time.Second):
+		a.log.Warn("journaler shutdown timed out")
+	}
+	select {
+	case <-cleanerDone:
+	case <-time.After(2 * time.Second):
+		a.log.Warn("cleaner scheduler shutdown timed out")
+	}
+	select {
+	case <-gitActivityDone:
+	case <-time.After(2 * time.Second):
+		a.log.Warn("git activity scheduler shutdown timed out")
 	}
 
 	a.bus.Close()
@@ -879,6 +1144,7 @@ func resolveMemoryService(
 		Store:               memStore,
 		SimilarityThreshold: float32(cfg.SimilarityThreshold),
 		DefaultTopK:         cfg.DefaultTopK,
+		DedupThreshold:      float32(cfg.DedupThreshold),
 		Scope: memory.ScopeDefaults{
 			Default: memory.Scope(cfg.Scope.Default),
 		},
@@ -1027,6 +1293,54 @@ func (a *captureHistoryAdapter) History(ctx context.Context, sessionID string, l
 		out = append(out, capture.TranscriptEntry{Ts: e.Ts, Text: e.Text})
 	}
 	return out, nil
+}
+
+// projectdocSessionLookup adapts session.Manager.Get + History to the
+// projectdoc.SessionLookup interface the journaler depends on.
+// Decoupled from session.Session so projectdoc doesn't have to
+// import internal/session (avoids a future cycle when session needs
+// to read the journal at startup).
+type projectdocSessionLookup struct {
+	mgr *session.Manager
+}
+
+func (a *projectdocSessionLookup) Get(ctx context.Context, id string) (projectdoc.SessionInfo, error) {
+	s, err := a.mgr.Get(ctx, id)
+	if err != nil {
+		return projectdoc.SessionInfo{}, err
+	}
+	return projectdoc.SessionInfo{
+		ID:         s.ID,
+		ProviderID: s.ProviderID,
+		Cwd:        s.Cwd,
+		StartedAt:  s.StartedAt,
+		EndedAt:    s.EndedAt,
+		ExitCode:   s.ExitCode,
+	}, nil
+}
+
+func (a *projectdocSessionLookup) History(ctx context.Context, id string, limit int) ([]projectdoc.HistoryEntry, error) {
+	resp, err := a.mgr.History(ctx, id, limit)
+	if err != nil {
+		return nil, err
+	}
+	if resp.UnsupportedProvider {
+		return nil, nil
+	}
+	out := make([]projectdoc.HistoryEntry, 0, len(resp.Entries))
+	for _, e := range resp.Entries {
+		out = append(out, projectdoc.HistoryEntry{Ts: e.Ts, Text: e.Text})
+	}
+	return out, nil
+}
+
+// TranscriptText (M18) returns the full conversation transcript
+// for the session — Claude / Codex / Gemini each have their own
+// JSONL reader; Manager.TranscriptText dispatches by provider.
+// Returns "" for providers we haven't taught yet rather than an
+// error so the journaler falls back to metadata-only.
+func (a *projectdocSessionLookup) TranscriptText(ctx context.Context, id string, maxBytes int) (string, error) {
+	return a.mgr.TranscriptText(ctx, id, maxBytes)
 }
 
 // defaultBackupDir returns expandPath(configured) when set, else

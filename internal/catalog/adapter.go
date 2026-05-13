@@ -6,7 +6,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/opendray/opendray-v2/internal/cliacct"
 	"github.com/opendray/opendray-v2/internal/mcp"
 	"github.com/opendray/opendray-v2/internal/session"
@@ -66,6 +68,29 @@ type SessionProvider struct {
 	// recent project memories into the system prompt at spawn
 	// time. Backed by internal/memory/injector. Nil → no injection.
 	ambientInjector AmbientInjector
+
+	// projectDocInjector, when set, renders the cross-agent project
+	// goal + plan + recent journal as a system-prompt banner. Backed
+	// by internal/projectdoc.Service.RenderForSpawn. Nil → no
+	// injection (e.g. older builds without memory layers 2-4).
+	projectDocInjector ProjectDocInjector
+
+	// projectScanner, when set, auto-detects tech stack + structure
+	// at spawn time (only re-scans when the existing tech_stack doc
+	// is older than scannerMaxAge). Nil → no auto-scan, operator
+	// must POST /project-scan/run manually.
+	projectScanner ProjectScanner
+
+	// scannerMaxAge controls when a stale tech_stack doc triggers
+	// a re-scan. Default 6h.
+	scannerMaxAge time.Duration
+
+	// gitActivity, when set, kicks off a background refresh of the
+	// recent_activity doc when the cached one is older than
+	// gitActivityMaxAge. Done async — we don't block spawn on a
+	// 60-150s LLM call.
+	gitActivity       GitActivityRefresher
+	gitActivityMaxAge time.Duration
 }
 
 // AmbientInjector is the contract internal/memory/injector
@@ -73,6 +98,36 @@ type SessionProvider struct {
 // memory package.
 type AmbientInjector interface {
 	Render(ctx context.Context, sessionID, cwd string) (string, error)
+}
+
+// ProjectDocInjector is the contract internal/projectdoc.Service
+// satisfies. Returns a rendered markdown banner combining the
+// project goal, plan, tech_stack, and recent journal entries;
+// empty string means "nothing to inject — skip silently".
+type ProjectDocInjector interface {
+	RenderForSpawn(ctx context.Context, cwd string, recentLogs int) (string, error)
+}
+
+// ProjectScanner is the contract internal/projectscan.Service
+// satisfies. The catalog adapter calls Run at spawn time (when the
+// stored tech_stack doc is older than maxAge) so a fresh agent sees
+// the current tech stack + structure without re-indexing the repo.
+// Errors are best-effort — failure to scan shouldn't block the
+// spawn.
+type ProjectScanner interface {
+	Run(ctx context.Context, cwd string) error
+	IsStale(ctx context.Context, cwd string, maxAge time.Duration) bool
+}
+
+// GitActivityRefresher is the contract internal/gitactivity.Service
+// satisfies. Same shape as ProjectScanner: at spawn time, if the
+// recent_activity doc is stale, the catalog kicks off a refresh in
+// a background goroutine (not sync — git+LLM takes 60-150s and we
+// don't want to block PTY allocation that long). The next spawn,
+// or a polling UI, will see the refreshed doc.
+type GitActivityRefresher interface {
+	IsStale(ctx context.Context, cwd string, maxAge time.Duration) bool
+	RefreshAsync(cwd string)
 }
 
 // MemoryMirrorFunc syncs Claude's local memory files for the given
@@ -142,6 +197,45 @@ func (sp *SessionProvider) WithMemoryAutoAttach(cfg MemoryAutoAttach) *SessionPr
 // agent's system prompt. Returns the receiver for chained setup.
 func (sp *SessionProvider) WithAmbientInjector(inj AmbientInjector) *SessionProvider {
 	sp.ambientInjector = inj
+	return sp
+}
+
+// WithProjectDocInjector installs the cross-agent project-doc
+// injector — prepends a "Project context" banner (goal + plan +
+// recent journal) to the agent's system prompt at spawn time.
+func (sp *SessionProvider) WithProjectDocInjector(inj ProjectDocInjector) *SessionProvider {
+	sp.projectDocInjector = inj
+	return sp
+}
+
+// WithProjectScanner installs the project scanner. When the
+// stored tech_stack doc for the spawning session's cwd is older
+// than maxAge (or missing), Run is called synchronously so the
+// freshly-scanned info ends up in the spawn-time banner. Set
+// maxAge=0 to use the default 6h.
+func (sp *SessionProvider) WithProjectScanner(scanner ProjectScanner, maxAge time.Duration) *SessionProvider {
+	sp.projectScanner = scanner
+	if maxAge <= 0 {
+		maxAge = 6 * time.Hour
+	}
+	sp.scannerMaxAge = maxAge
+	return sp
+}
+
+// WithGitActivityRefresher installs the git activity refresher.
+// At spawn time we check if the recent_activity doc is stale and,
+// if so, kick off the refresh asynchronously. The first spawn
+// after a stale doc still sees the *previous* summary in its
+// banner — the freshly generated one lands moments later for the
+// next spawn or polling client. We trade banner freshness for not
+// blocking the agent's PTY allocation behind a 60-150s LLM call.
+// maxAge=0 uses the default 12h.
+func (sp *SessionProvider) WithGitActivityRefresher(r GitActivityRefresher, maxAge time.Duration) *SessionProvider {
+	sp.gitActivity = r
+	if maxAge <= 0 {
+		maxAge = 12 * time.Hour
+	}
+	sp.gitActivityMaxAge = maxAge
 	return sp
 }
 
@@ -243,6 +337,16 @@ func (sp *SessionProvider) Resolve(ctx context.Context, id string) (session.Prov
 			out.Env[k] = v
 		}
 
+		// M21 — Pre-assign the agent-side session UUID so the M18
+		// transcript reader can locate the *.jsonl file directly,
+		// instead of falling back to "latest mtime in dir" which
+		// picks up unrelated active conversations. Claude Code and
+		// Gemini both accept `--session-id <uuid>`; Codex does not,
+		// so it stays on the cwd-based reader path. injectSessionIDFor
+		// mutates out.Args + out.ClaudeSessionID directly, and the
+		// session manager picks up the UUID for persistence.
+		injectSessionIDFor(providerID, &out)
+
 		if wantClaudeAccount {
 			acct, token, err := sp.accounts.ReadToken(prepareCtx, claudeAccountID)
 			if err != nil {
@@ -308,6 +412,48 @@ func (sp *SessionProvider) Resolve(ctx context.Context, id string) (session.Prov
 			} else if text != "" {
 				if err := injectAmbientMemoryFor(providerID, baseDir, text, &out); err != nil {
 					return session.PrepareOutput{}, fmt.Errorf("inject ambient memory: %w", err)
+				}
+			}
+		}
+
+		// Cross-agent project context: goal + plan + recent journal
+		// (memory layers 2-4) + tech stack (M16 scanner). Injected
+		// through the same per-CLI channel as ambient memory so the
+		// agent sees one composite system prompt. Failures here are
+		// non-fatal — a missing banner is better than a failed spawn.
+		if sp.projectDocInjector != nil {
+			cwd := session.Cwd(prepareCtx)
+			// Trigger a fresh project scan when the cached tech_stack
+			// is stale. Runs synchronously so the renderer below
+			// pulls in the latest info. Failure is logged, not
+			// propagated — a stale or missing tech_stack section is
+			// still better than blocking the spawn.
+			if cwd != "" && sp.projectScanner != nil {
+				if sp.projectScanner.IsStale(prepareCtx, cwd, sp.scannerMaxAge) {
+					if err := sp.projectScanner.Run(prepareCtx, cwd); err != nil {
+						sp.log.Warn("project scanner failed; spawn continues with stale tech_stack",
+							"cwd", cwd, "err", err)
+					}
+				}
+			}
+			// Git activity refresher — async because the LLM step is
+			// slow (60-150s). The current spawn sees the previous
+			// summary in its banner; the freshly generated one lands
+			// in time for the next spawn.
+			if cwd != "" && sp.gitActivity != nil {
+				if sp.gitActivity.IsStale(prepareCtx, cwd, sp.gitActivityMaxAge) {
+					sp.gitActivity.RefreshAsync(cwd)
+				}
+			}
+			if cwd != "" {
+				text, err := sp.projectDocInjector.RenderForSpawn(prepareCtx, cwd, 5)
+				if err != nil {
+					sp.log.Warn("project doc render failed; skipping inject",
+						"cwd", cwd, "err", err)
+				} else if text != "" {
+					if err := injectAmbientMemoryFor(providerID, baseDir, text, &out); err != nil {
+						return session.PrepareOutput{}, fmt.Errorf("inject project docs: %w", err)
+					}
 				}
 			}
 		}
@@ -714,7 +860,74 @@ If you find a memory that contradicts the current state of the
 code or the user's latest direction, **surface it to the user**
 and propose an update or delete. Don't silently work around it —
 silent contradictions are how memory rot starts.
+
+### Project state — keep it current (DO NOT skip)
+
+memory_store is for DISCRETE FACTS. Project STATE — what we're
+building, where we are, what just happened — belongs in three
+other tools you also have on this MCP server:
+
+- ` + "`project_goal_set`" + ` — the project's long-term intent.
+  Update only when the goal genuinely changes; rare.
+- ` + "`project_plan_set`" + ` — the current roadmap / WIP arc.
+  **Update whenever the plan moves forward**: when you finish a
+  phase, when a new phase appears, when scope shifts. Each call
+  files a proposal that the operator approves, so it's safe to
+  call often — the operator filters noise. A stale plan is the
+  most common reason future sessions repeat work.
+- ` + "`session_log_append`" + ` — append a journal entry. **Call this
+  every time you complete a meaningful unit of work** in the
+  current session: shipped a feature, fixed a bug, made a
+  decision, hit a blocker, learned something the next session
+  needs. Title = one-line summary, content = what you did + why.
+  These accumulate into the project journal that every future
+  session sees at spawn time.
+- ` + "`decision_record`" + ` — ADR-style entry for choices that future
+  sessions should not re-litigate ("we picked pgvector over
+  Pinecone because…"). Use for genuine architectural locks-in,
+  not every micro-decision.
+
+DO NOT confuse the layers:
+
+| layer        | what                                | when |
+|--------------|-------------------------------------|------|
+| memory_store | one-sentence fact, top-K retrieved  | rarely; only durable facts |
+| session_log_append | what we just did               | often; every meaningful step |
+| project_plan_set   | where we are vs where we're going | when the plan shifts |
+| project_goal_set   | the project's North Star       | rarely; only when goal changes |
+
+The single most common failure mode is agents writing "currently
+working on M5" as a memory_store entry. That's WRONG — it's
+ephemeral state that belongs in a session_log_append OR a
+project_plan_set update. memory_store is for things future
+sessions will still want to retrieve months from now.
 `
+
+// injectSessionIDFor pre-assigns the agent-side session UUID for
+// providers that support `--session-id`. Returns true when an ID was
+// injected, false when the provider doesn't support pre-assignment.
+//
+// Mutates out.Args (adds the flag pair) and out.ClaudeSessionID
+// (so the session manager can persist the value onto the row).
+// Codex has no equivalent flag — it generates its own UUID inside
+// rollout-<ts>-<uuid>.jsonl, which the M18 reader still finds via
+// the cwd-based fallback path.
+//
+// Idempotent against operator-supplied --session-id: if the user
+// already passed a UUID via Session.Args we leave it untouched.
+// (Args ordering puts provider-baseline → out.Args → sess.Args, so
+// a user-supplied flag wins anyway, but we skip injection too to
+// avoid emitting a duplicate flag.)
+func injectSessionIDFor(providerID string, out *session.PrepareOutput) bool {
+	switch providerID {
+	case "claude", "gemini":
+		id := uuid.NewString()
+		out.Args = append(out.Args, "--session-id", id)
+		out.ClaudeSessionID = id
+		return true
+	}
+	return false
+}
 
 // injectMemoryGuidanceFor adds memoryGuidanceText to the provider's
 // system-prompt surface — same per-CLI dispatch shape as
