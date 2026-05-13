@@ -259,6 +259,56 @@ class TranslationsMcpEn {
 
 	late final TranslationsMcpEditorEn editor = TranslationsMcpEditorEn.internal(_root);
 	late final TranslationsMcpSecretEn secret = TranslationsMcpSecretEn.internal(_root);
+	late final TranslationsMcpPopupEn popup = TranslationsMcpPopupEn.internal(_root);
+	late final TranslationsMcpKvEn kv = TranslationsMcpKvEn.internal(_root);
+
+	/// en: 'Removes the vault directory for {id}. Sessions that reference this server stop being able to spawn it.'
+	String deleteServerBody({required Object id}) => 'Removes the vault directory for ${id}. Sessions that reference this server stop being able to spawn it.';
+
+	/// en: 'Deleted {id}.'
+	String deleteServerSnack({required Object id}) => 'Deleted ${id}.';
+
+	/// en: 'Servers ({count})'
+	String serversCount({required Object count}) => 'Servers (${count})';
+
+	/// en: 'Secrets ({count})'
+	String secretsCount({required Object count}) => 'Secrets (${count})';
+
+	/// en: 'No MCP servers registered. Tap "New server" to add one.'
+	String get emptyServers => 'No MCP servers registered. Tap "New server" to add one.';
+
+	/// en: 'No secrets stored. Add one to feed sensitive env / headers into MCP servers without putting them in the JSON.'
+	String get emptySecrets => 'No secrets stored. Add one to feed sensitive env / headers into MCP servers without putting them in the JSON.';
+
+	/// en: 'No vault file yet — added secrets create it.'
+	String get noVaultFileYet => 'No vault file yet — added secrets create it.';
+
+	/// en: 'Tap to replace · long-press / trash to delete'
+	String get tapToReplaceHint => 'Tap to replace · long-press / trash to delete';
+
+	/// en: 'Failed to load MCP state'
+	String get failedToLoad => 'Failed to load MCP state';
+
+	/// en: 'MCP server created.'
+	String get serverCreatedSnack => 'MCP server created.';
+
+	/// en: 'MCP server updated.'
+	String get serverUpdatedSnack => 'MCP server updated.';
+
+	/// en: 'Env'
+	String get envHeading => 'Env';
+
+	/// en: 'AES-GCM encrypted (key in OS keychain)'
+	String get encryptionAes => 'AES-GCM encrypted (key in OS keychain)';
+
+	/// en: 'PLAINTEXT — keychain unavailable'
+	String get encryptionPlaintext => 'PLAINTEXT — keychain unavailable';
+
+	/// en: '{name} enabled.'
+	String toggleEnabledSnack({required Object name}) => '${name} enabled.';
+
+	/// en: '{name} disabled.'
+	String toggleDisabledSnack({required Object name}) => '${name} disabled.';
 }
 
 // Path: providers
@@ -788,6 +838,28 @@ class TranslationsChannelsEn {
 	String errorWithMessage({required Object prefix, required Object error}) => '${prefix}: ${error}';
 
 	late final TranslationsChannelsNotificationsEn notifications = TranslationsChannelsNotificationsEn.internal(_root);
+	late final TranslationsChannelsPopupEn popup = TranslationsChannelsPopupEn.internal(_root);
+	late final TranslationsChannelsBadgesEn badges = TranslationsChannelsBadgesEn.internal(_root);
+
+	/// en: '· caps: {list}'
+	String capsLabel({required Object list}) => '· caps: ${list}';
+
+	/// en: 'Bridge channels stay web-only'
+	String get bridgeWebOnly => 'Bridge channels stay web-only';
+
+	/// en: 'Add one from the web admin: Channels → New.'
+	String get bridgeEmptyAdd => 'Add one from the web admin: Channels → New.';
+
+	/// en: 'Stops the channel and removes its configuration. In-flight notifications addressed to it will be dropped silently.'
+	String get deleteBody => 'Stops the channel and removes its configuration. In-flight notifications addressed to it will be dropped silently.';
+
+	late final TranslationsChannelsSnacksEn snacks = TranslationsChannelsSnacksEn.internal(_root);
+	late final TranslationsChannelsErrorPrefixEn errorPrefix = TranslationsChannelsErrorPrefixEn.internal(_root);
+
+	/// en: 'Failed to load channels'
+	String get failedToLoad => 'Failed to load channels';
+
+	late final TranslationsChannelsKindsEn kinds = TranslationsChannelsKindsEn.internal(_root);
 }
 
 // Path: onboarding
@@ -1414,6 +1486,45 @@ class TranslationsMcpEditorEn {
 
 	/// en: 'JSON config — name, transport: stdio, command, args…'
 	String get jsonHint => 'JSON config — name, transport: stdio, command, args…';
+
+	/// en: 'Optional one-liner'
+	String get descriptionPlaceholder => 'Optional one-liner';
+
+	/// en: 'Body must be a JSON object'
+	String get validateJsonObject => 'Body must be a JSON object';
+
+	/// en: 'Invalid JSON: {error}'
+	String validateJsonInvalid({required Object error}) => 'Invalid JSON: ${error}';
+
+	/// en: 'Edit MCP server'
+	String get appBarEdit => 'Edit MCP server';
+
+	/// en: 'New MCP server'
+	String get appBarNew => 'New MCP server';
+
+	/// en: 'Locked in edit mode — delete + recreate to change.'
+	String get idLockedHint => 'Locked in edit mode — delete + recreate to change.';
+
+	/// en: 'Server JSON'
+	String get jsonLabel => 'Server JSON';
+
+	/// en: 'Schema: transport must be stdio, http or sse. For stdio set command + args. For http/sse set url + headers. Use \$secret:KEY to reference vault secrets.'
+	String get jsonSchemaHelp => 'Schema: transport must be stdio, http or sse. For stdio set command + args. For http/sse set url + headers. Use \$secret:KEY to reference vault secrets.';
+
+	/// en: 'id (URL segment, lowercase alphanumeric / dash / underscore)'
+	String get idLabel => 'id (URL segment, lowercase alphanumeric / dash / underscore)';
+
+	/// en: 'id is required'
+	String get idRequired => 'id is required';
+
+	/// en: 'Saving…'
+	String get saving => 'Saving…';
+
+	/// en: 'Save'
+	String get save => 'Save';
+
+	/// en: 'Create'
+	String get create => 'Create';
 }
 
 // Path: mcp.secret
@@ -1432,6 +1543,90 @@ class TranslationsMcpSecretEn {
 
 	/// en: 'Value'
 	String get valueLabel => 'Value';
+
+	/// en: 'Key is required.'
+	String get keyRequired => 'Key is required.';
+
+	/// en: 'Key must match [A-Za-z_][A-Za-z0-9_]* — same rules as a shell env var.'
+	String get keyInvalid => 'Key must match [A-Za-z_][A-Za-z0-9_]* — same rules as a shell env var.';
+
+	/// en: 'Value is required.'
+	String get valueRequired => 'Value is required.';
+
+	/// en: 'Replace secret value'
+	String get replaceTitle => 'Replace secret value';
+
+	/// en: 'Add secret'
+	String get addTitle => 'Add secret';
+
+	/// en: 'Save'
+	String get saveButton => 'Save';
+
+	/// en: 'Add'
+	String get addButton => 'Add';
+
+	/// en: 'Shell-env-var rules: starts with a letter or _, then letters / digits / _ only.'
+	String get helpRules => 'Shell-env-var rules: starts with a letter or _, then letters / digits / _ only.';
+
+	/// en: 'Paste new value (the previous one is wiped)'
+	String get replaceHint => 'Paste new value (the previous one is wiped)';
+
+	/// en: 'Paste secret value'
+	String get addHint => 'Paste secret value';
+
+	/// en: 'Secret {key} added.'
+	String addedSnack({required Object key}) => 'Secret ${key} added.';
+
+	/// en: 'Secret {key} updated.'
+	String updatedSnack({required Object key}) => 'Secret ${key} updated.';
+
+	/// en: 'Deleted {key}.'
+	String deletedSnack({required Object key}) => 'Deleted ${key}.';
+
+	/// en: 'Removes the value from the encrypted vault. Any MCP server that references it will fail until restored.'
+	String get deleteBody => 'Removes the value from the encrypted vault. Any MCP server that references it will fail until restored.';
+}
+
+// Path: mcp.popup
+class TranslationsMcpPopupEn {
+	TranslationsMcpPopupEn.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Full JSON editor — vault-backed servers only'
+	String get editConfigSubtitle => 'Full JSON editor — vault-backed servers only';
+
+	/// en: 'Read-only inspector for the server JSON'
+	String get viewRawSubtitle => 'Read-only inspector for the server JSON';
+
+	/// en: 'Delete'
+	String get deleteLabel => 'Delete';
+}
+
+// Path: mcp.kv
+class TranslationsMcpKvEn {
+	TranslationsMcpKvEn.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Transport'
+	String get transport => 'Transport';
+
+	/// en: 'Description'
+	String get description => 'Description';
+
+	/// en: 'Command'
+	String get command => 'Command';
+
+	/// en: 'Args'
+	String get args => 'Args';
+
+	/// en: 'Headers'
+	String get headers => 'Headers';
 }
 
 // Path: providers.errorPrefix
@@ -1613,6 +1808,141 @@ class TranslationsChannelsNotificationsEn {
 
 	/// en: 'Snippet length cap'
 	String get snippetLengthCap => 'Snippet length cap';
+
+	/// en: 'All session events.'
+	String get notifyOnAll => 'All session events.';
+
+	/// en: 'No events selected — outbound notifications muted.'
+	String get notifyOnEmpty => 'No events selected — outbound notifications muted.';
+
+	/// en: 'Embeds the recent terminal tail in each notification.'
+	String get snippetHelper => 'Embeds the recent terminal tail in each notification.';
+
+	/// en: 'no cap'
+	String get snippetNoCap => 'no cap';
+
+	/// en: '{n} chars'
+	String snippetChars({required Object n}) => '${n} chars';
+
+	/// en: 'Notification preferences updated.'
+	String get updatedSnack => 'Notification preferences updated.';
+
+	late final TranslationsChannelsNotificationsModesEn modes = TranslationsChannelsNotificationsModesEn.internal(_root);
+}
+
+// Path: channels.popup
+class TranslationsChannelsPopupEn {
+	TranslationsChannelsPopupEn.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Enable'
+	String get enable => 'Enable';
+
+	/// en: 'Disable'
+	String get disable => 'Disable';
+
+	/// en: 'Mute'
+	String get mute => 'Mute';
+
+	/// en: 'Unmute'
+	String get unmute => 'Unmute';
+
+	/// en: 'Delete'
+	String get deleteLabel => 'Delete';
+}
+
+// Path: channels.badges
+class TranslationsChannelsBadgesEn {
+	TranslationsChannelsBadgesEn.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'running'
+	String get running => 'running';
+
+	/// en: 'starting…'
+	String get starting => 'starting…';
+
+	/// en: 'disabled'
+	String get disabled => 'disabled';
+
+	/// en: 'muted'
+	String get muted => 'muted';
+}
+
+// Path: channels.snacks
+class TranslationsChannelsSnacksEn {
+	TranslationsChannelsSnacksEn.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Test message dispatched.'
+	String get testDispatched => 'Test message dispatched.';
+
+	/// en: 'Channel enabled.'
+	String get channelEnabled => 'Channel enabled.';
+
+	/// en: 'Channel disabled.'
+	String get channelDisabled => 'Channel disabled.';
+
+	/// en: 'Channel muted.'
+	String get channelMuted => 'Channel muted.';
+
+	/// en: 'Channel unmuted.'
+	String get channelUnmuted => 'Channel unmuted.';
+
+	/// en: 'Channel config updated.'
+	String get configUpdated => 'Channel config updated.';
+
+	/// en: 'Channel deleted.'
+	String get channelDeleted => 'Channel deleted.';
+}
+
+// Path: channels.errorPrefix
+class TranslationsChannelsErrorPrefixEn {
+	TranslationsChannelsErrorPrefixEn.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Test failed'
+	String get test => 'Test failed';
+
+	/// en: 'Toggle failed'
+	String get toggle => 'Toggle failed';
+
+	/// en: 'Mute toggle failed'
+	String get muteToggle => 'Mute toggle failed';
+
+	/// en: 'Update failed'
+	String get update => 'Update failed';
+
+	/// en: 'Delete failed'
+	String get delete => 'Delete failed';
+}
+
+// Path: channels.kinds
+class TranslationsChannelsKindsEn {
+	TranslationsChannelsKindsEn.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+	late final TranslationsChannelsKindsTelegramEn telegram = TranslationsChannelsKindsTelegramEn.internal(_root);
+	late final TranslationsChannelsKindsSlackEn slack = TranslationsChannelsKindsSlackEn.internal(_root);
+	late final TranslationsChannelsKindsDiscordEn discord = TranslationsChannelsKindsDiscordEn.internal(_root);
+	late final TranslationsChannelsKindsFeishuEn feishu = TranslationsChannelsKindsFeishuEn.internal(_root);
+	late final TranslationsChannelsKindsDingtalkEn dingtalk = TranslationsChannelsKindsDingtalkEn.internal(_root);
+	late final TranslationsChannelsKindsWecomEn wecom = TranslationsChannelsKindsWecomEn.internal(_root);
+	late final TranslationsChannelsKindsWechatEn wechat = TranslationsChannelsKindsWechatEn.internal(_root);
 }
 
 // Path: notesPage.editor
@@ -2629,6 +2959,228 @@ class TranslationsMemoryWorkersTasksTranscriptEn {
 	String get description => 'Session-end \'what did the agent do\' summary. Naturally fits an agent worker.';
 }
 
+// Path: channels.notifications.modes
+class TranslationsChannelsNotificationsModesEn {
+	TranslationsChannelsNotificationsModesEn.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Once per session'
+	String get onceLabel => 'Once per session';
+
+	/// en: 'Fire once when idle, stay silent until reply or end.'
+	String get onceDescription => 'Fire once when idle, stay silent until reply or end.';
+
+	/// en: 'Time-window cooldown'
+	String get cooldownLabel => 'Time-window cooldown';
+
+	/// en: 'Suppress repeats within the chosen window.'
+	String get cooldownDescription => 'Suppress repeats within the chosen window.';
+
+	/// en: 'Every event (noisy)'
+	String get everyLabel => 'Every event (noisy)';
+
+	/// en: 'No suppression — only for low-frequency channels.'
+	String get everyDescription => 'No suppression — only for low-frequency channels.';
+}
+
+// Path: channels.kinds.telegram
+class TranslationsChannelsKindsTelegramEn {
+	TranslationsChannelsKindsTelegramEn.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Bot via @BotFather. opendray long-polls getUpdates and sends via REST. Buttons + reply_to_message work natively.'
+	String get description => 'Bot via @BotFather. opendray long-polls getUpdates and sends via REST. Buttons + reply_to_message work natively.';
+
+	/// en: 'Bot token'
+	String get botTokenLabel => 'Bot token';
+
+	/// en: 'From @BotFather. Stored in channel config; admin-only API.'
+	String get botTokenHint => 'From @BotFather. Stored in channel config; admin-only API.';
+
+	/// en: 'Default chat ID'
+	String get chatIdLabel => 'Default chat ID';
+
+	/// en: '42 (optional — used when no ReplyCtx)'
+	String get chatIdPlaceholder => '42 (optional — used when no ReplyCtx)';
+}
+
+// Path: channels.kinds.slack
+class TranslationsChannelsKindsSlackEn {
+	TranslationsChannelsKindsSlackEn.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Socket Mode — no public webhook needed. Requires a bot OAuth token (xoxb-) and an app-level token (xapp-) with connections:write.'
+	String get description => 'Socket Mode — no public webhook needed. Requires a bot OAuth token (xoxb-) and an app-level token (xapp-) with connections:write.';
+
+	/// en: 'Bot token (xoxb-…)'
+	String get botTokenLabel => 'Bot token (xoxb-…)';
+
+	/// en: 'OAuth & Permissions → Bot User OAuth Token. Needs chat:write.'
+	String get botTokenHint => 'OAuth & Permissions → Bot User OAuth Token. Needs chat:write.';
+
+	/// en: 'App-level token (xapp-…)'
+	String get appTokenLabel => 'App-level token (xapp-…)';
+
+	/// en: 'Settings → Basic Information → App-Level Tokens. Scope: connections:write.'
+	String get appTokenHint => 'Settings → Basic Information → App-Level Tokens. Scope: connections:write.';
+
+	/// en: 'Default channel ID'
+	String get channelIdLabel => 'Default channel ID';
+
+	/// en: 'C0123ABC456 (optional)'
+	String get channelIdPlaceholder => 'C0123ABC456 (optional)';
+}
+
+// Path: channels.kinds.discord
+class TranslationsChannelsKindsDiscordEn {
+	TranslationsChannelsKindsDiscordEn.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Bot via Discord Developer Portal with MESSAGE CONTENT INTENT enabled. Connects to Gateway WS — no public URL required.'
+	String get description => 'Bot via Discord Developer Portal with MESSAGE CONTENT INTENT enabled. Connects to Gateway WS — no public URL required.';
+
+	/// en: 'Bot token'
+	String get botTokenLabel => 'Bot token';
+
+	/// en: 'Bot token from Discord Developer Portal'
+	String get botTokenPlaceholder => 'Bot token from Discord Developer Portal';
+
+	/// en: 'Application → Bot → Reset Token. Invite bot with send_messages + embed_links.'
+	String get botTokenHint => 'Application → Bot → Reset Token. Invite bot with send_messages + embed_links.';
+
+	/// en: 'Default channel ID'
+	String get channelIdLabel => 'Default channel ID';
+
+	/// en: '123456789012345678 (optional)'
+	String get channelIdPlaceholder => '123456789012345678 (optional)';
+}
+
+// Path: channels.kinds.feishu
+class TranslationsChannelsKindsFeishuEn {
+	TranslationsChannelsKindsFeishuEn.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'App-level credentials. Uses event subscription webhook for inbound. Public webhook URL is generated below — paste it into the Feishu dev console.'
+	String get description => 'App-level credentials. Uses event subscription webhook for inbound. Public webhook URL is generated below — paste it into the Feishu dev console.';
+
+	/// en: 'Open the webhook URL from the channel card and paste it into Feishu Open Platform → Event Subscriptions → Request URL.'
+	String get afterCreateHint => 'Open the webhook URL from the channel card and paste it into Feishu Open Platform → Event Subscriptions → Request URL.';
+
+	/// en: 'App ID'
+	String get appIdLabel => 'App ID';
+
+	/// en: 'App secret'
+	String get appSecretLabel => 'App secret';
+
+	/// en: 'Application credential secret'
+	String get appSecretPlaceholder => 'Application credential secret';
+
+	/// en: 'Verification token'
+	String get verificationTokenLabel => 'Verification token';
+
+	/// en: 'From Event Subscriptions → Verification Token. When set, opendray rejects webhooks with a different token.'
+	String get verificationTokenHint => 'From Event Subscriptions → Verification Token. When set, opendray rejects webhooks with a different token.';
+
+	/// en: 'Default chat ID (oc_…)'
+	String get chatIdLabel => 'Default chat ID (oc_…)';
+
+	/// en: 'oc_xxxxxxxxxx (optional)'
+	String get chatIdPlaceholder => 'oc_xxxxxxxxxx (optional)';
+}
+
+// Path: channels.kinds.dingtalk
+class TranslationsChannelsKindsDingtalkEn {
+	TranslationsChannelsKindsDingtalkEn.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Custom group robot. Outbound only. Group chat → Robots → Add → Sign mode → copy webhook + secret.'
+	String get description => 'Custom group robot. Outbound only. Group chat → Robots → Add → Sign mode → copy webhook + secret.';
+
+	/// en: 'Webhook URL'
+	String get webhookUrlLabel => 'Webhook URL';
+
+	/// en: 'Sign secret'
+	String get secretLabel => 'Sign secret';
+
+	/// en: 'When the robot is set to "Sign" security mode, copy the secret here. opendray adds the timestamp + sign params automatically.'
+	String get secretHint => 'When the robot is set to "Sign" security mode, copy the secret here. opendray adds the timestamp + sign params automatically.';
+}
+
+// Path: channels.kinds.wecom
+class TranslationsChannelsKindsWecomEn {
+	TranslationsChannelsKindsWecomEn.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Group robot webhook. Outbound only (text + markdown). Group settings → Group robots → Add → copy webhook URL.'
+	String get description => 'Group robot webhook. Outbound only (text + markdown). Group settings → Group robots → Add → copy webhook URL.';
+
+	/// en: 'Webhook key'
+	String get webhookKeyLabel => 'Webhook key';
+
+	/// en: 'The "key=" query value'
+	String get webhookKeyPlaceholder => 'The "key=" query value';
+
+	/// en: 'Or paste the whole webhook URL into the field below — either is enough.'
+	String get webhookKeyHint => 'Or paste the whole webhook URL into the field below — either is enough.';
+
+	/// en: 'Or full webhook URL'
+	String get webhookUrlLabel => 'Or full webhook URL';
+}
+
+// Path: channels.kinds.wechat
+class TranslationsChannelsKindsWechatEn {
+	TranslationsChannelsKindsWechatEn.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Push to personal WeChat via WxPusher. Outbound-only — push services do not relay user replies. Each recipient subscribes once via QR code.'
+	String get description => 'Push to personal WeChat via WxPusher. Outbound-only — push services do not relay user replies. Each recipient subscribes once via QR code.';
+
+	/// en: 'App token (AT_…)'
+	String get appTokenLabel => 'App token (AT_…)';
+
+	/// en: 'WxPusher → 应用管理 → 创建应用 → 复制 App Token.'
+	String get appTokenHint => 'WxPusher → 应用管理 → 创建应用 → 复制 App Token.';
+
+	/// en: 'Recipient UIDs (one per line)'
+	String get uidsLabel => 'Recipient UIDs (one per line)';
+
+	/// en: 'Either UIDs or topic IDs is required.'
+	String get uidsHint => 'Either UIDs or topic IDs is required.';
+
+	/// en: 'Topic IDs (one per line)'
+	String get topicIdsLabel => 'Topic IDs (one per line)';
+
+	/// en: 'Tap-through URL'
+	String get urlLabel => 'Tap-through URL';
+
+	/// en: 'When set, tapping the WeChat notification opens this page.'
+	String get urlHint => 'When set, tapping the WeChat notification opens this page.';
+}
+
 // Path: settings.logViewer.levels
 class TranslationsSettingsLogViewerLevelsEn {
 	TranslationsSettingsLogViewerLevelsEn.internal(this._root);
@@ -2947,9 +3499,60 @@ extension on Translations {
 			'mcp.errorWithMessage' => ({required Object prefix, required Object error}) => '${prefix}: ${error}',
 			'mcp.editor.nameHint' => 'my-mcp-server',
 			'mcp.editor.jsonHint' => 'JSON config — name, transport: stdio, command, args…',
+			'mcp.editor.descriptionPlaceholder' => 'Optional one-liner',
+			'mcp.editor.validateJsonObject' => 'Body must be a JSON object',
+			'mcp.editor.validateJsonInvalid' => ({required Object error}) => 'Invalid JSON: ${error}',
+			'mcp.editor.appBarEdit' => 'Edit MCP server',
+			'mcp.editor.appBarNew' => 'New MCP server',
+			'mcp.editor.idLockedHint' => 'Locked in edit mode — delete + recreate to change.',
+			'mcp.editor.jsonLabel' => 'Server JSON',
+			'mcp.editor.jsonSchemaHelp' => 'Schema: transport must be stdio, http or sse. For stdio set command + args. For http/sse set url + headers. Use \$secret:KEY to reference vault secrets.',
+			'mcp.editor.idLabel' => 'id (URL segment, lowercase alphanumeric / dash / underscore)',
+			'mcp.editor.idRequired' => 'id is required',
+			'mcp.editor.saving' => 'Saving…',
+			'mcp.editor.save' => 'Save',
+			'mcp.editor.create' => 'Create',
 			'mcp.secret.keyLabel' => 'Key',
 			'mcp.secret.keyHint' => 'GITHUB_TOKEN, OPENAI_KEY, …',
 			'mcp.secret.valueLabel' => 'Value',
+			'mcp.secret.keyRequired' => 'Key is required.',
+			'mcp.secret.keyInvalid' => 'Key must match [A-Za-z_][A-Za-z0-9_]* — same rules as a shell env var.',
+			'mcp.secret.valueRequired' => 'Value is required.',
+			'mcp.secret.replaceTitle' => 'Replace secret value',
+			'mcp.secret.addTitle' => 'Add secret',
+			'mcp.secret.saveButton' => 'Save',
+			'mcp.secret.addButton' => 'Add',
+			'mcp.secret.helpRules' => 'Shell-env-var rules: starts with a letter or _, then letters / digits / _ only.',
+			'mcp.secret.replaceHint' => 'Paste new value (the previous one is wiped)',
+			'mcp.secret.addHint' => 'Paste secret value',
+			'mcp.secret.addedSnack' => ({required Object key}) => 'Secret ${key} added.',
+			'mcp.secret.updatedSnack' => ({required Object key}) => 'Secret ${key} updated.',
+			'mcp.secret.deletedSnack' => ({required Object key}) => 'Deleted ${key}.',
+			'mcp.secret.deleteBody' => 'Removes the value from the encrypted vault. Any MCP server that references it will fail until restored.',
+			'mcp.popup.editConfigSubtitle' => 'Full JSON editor — vault-backed servers only',
+			'mcp.popup.viewRawSubtitle' => 'Read-only inspector for the server JSON',
+			'mcp.popup.deleteLabel' => 'Delete',
+			'mcp.kv.transport' => 'Transport',
+			'mcp.kv.description' => 'Description',
+			'mcp.kv.command' => 'Command',
+			'mcp.kv.args' => 'Args',
+			'mcp.kv.headers' => 'Headers',
+			'mcp.deleteServerBody' => ({required Object id}) => 'Removes the vault directory for ${id}. Sessions that reference this server stop being able to spawn it.',
+			'mcp.deleteServerSnack' => ({required Object id}) => 'Deleted ${id}.',
+			'mcp.serversCount' => ({required Object count}) => 'Servers (${count})',
+			'mcp.secretsCount' => ({required Object count}) => 'Secrets (${count})',
+			'mcp.emptyServers' => 'No MCP servers registered. Tap "New server" to add one.',
+			'mcp.emptySecrets' => 'No secrets stored. Add one to feed sensitive env / headers into MCP servers without putting them in the JSON.',
+			'mcp.noVaultFileYet' => 'No vault file yet — added secrets create it.',
+			'mcp.tapToReplaceHint' => 'Tap to replace · long-press / trash to delete',
+			'mcp.failedToLoad' => 'Failed to load MCP state',
+			'mcp.serverCreatedSnack' => 'MCP server created.',
+			'mcp.serverUpdatedSnack' => 'MCP server updated.',
+			'mcp.envHeading' => 'Env',
+			'mcp.encryptionAes' => 'AES-GCM encrypted (key in OS keychain)',
+			'mcp.encryptionPlaintext' => 'PLAINTEXT — keychain unavailable',
+			'mcp.toggleEnabledSnack' => ({required Object name}) => '${name} enabled.',
+			'mcp.toggleDisabledSnack' => ({required Object name}) => '${name} disabled.',
 			'providers.title' => 'Providers',
 			'providers.configSaved' => 'Provider config updated.',
 			'providers.saveFailedApi' => ({required Object error}) => 'Save failed: ${error}',
@@ -3128,6 +3731,90 @@ extension on Translations {
 			'channels.notifications.cooldownWindow' => 'Cooldown window',
 			'channels.notifications.includeSnippet' => 'Include terminal snippet',
 			'channels.notifications.snippetLengthCap' => 'Snippet length cap',
+			'channels.notifications.notifyOnAll' => 'All session events.',
+			'channels.notifications.notifyOnEmpty' => 'No events selected — outbound notifications muted.',
+			'channels.notifications.snippetHelper' => 'Embeds the recent terminal tail in each notification.',
+			'channels.notifications.snippetNoCap' => 'no cap',
+			'channels.notifications.snippetChars' => ({required Object n}) => '${n} chars',
+			'channels.notifications.updatedSnack' => 'Notification preferences updated.',
+			'channels.notifications.modes.onceLabel' => 'Once per session',
+			'channels.notifications.modes.onceDescription' => 'Fire once when idle, stay silent until reply or end.',
+			'channels.notifications.modes.cooldownLabel' => 'Time-window cooldown',
+			'channels.notifications.modes.cooldownDescription' => 'Suppress repeats within the chosen window.',
+			'channels.notifications.modes.everyLabel' => 'Every event (noisy)',
+			'channels.notifications.modes.everyDescription' => 'No suppression — only for low-frequency channels.',
+			'channels.popup.enable' => 'Enable',
+			'channels.popup.disable' => 'Disable',
+			'channels.popup.mute' => 'Mute',
+			'channels.popup.unmute' => 'Unmute',
+			'channels.popup.deleteLabel' => 'Delete',
+			'channels.badges.running' => 'running',
+			'channels.badges.starting' => 'starting…',
+			'channels.badges.disabled' => 'disabled',
+			'channels.badges.muted' => 'muted',
+			'channels.capsLabel' => ({required Object list}) => '· caps: ${list}',
+			'channels.bridgeWebOnly' => 'Bridge channels stay web-only',
+			'channels.bridgeEmptyAdd' => 'Add one from the web admin: Channels → New.',
+			'channels.deleteBody' => 'Stops the channel and removes its configuration. In-flight notifications addressed to it will be dropped silently.',
+			'channels.snacks.testDispatched' => 'Test message dispatched.',
+			'channels.snacks.channelEnabled' => 'Channel enabled.',
+			'channels.snacks.channelDisabled' => 'Channel disabled.',
+			'channels.snacks.channelMuted' => 'Channel muted.',
+			'channels.snacks.channelUnmuted' => 'Channel unmuted.',
+			'channels.snacks.configUpdated' => 'Channel config updated.',
+			'channels.snacks.channelDeleted' => 'Channel deleted.',
+			'channels.errorPrefix.test' => 'Test failed',
+			'channels.errorPrefix.toggle' => 'Toggle failed',
+			'channels.errorPrefix.muteToggle' => 'Mute toggle failed',
+			'channels.errorPrefix.update' => 'Update failed',
+			'channels.errorPrefix.delete' => 'Delete failed',
+			'channels.failedToLoad' => 'Failed to load channels',
+			'channels.kinds.telegram.description' => 'Bot via @BotFather. opendray long-polls getUpdates and sends via REST. Buttons + reply_to_message work natively.',
+			'channels.kinds.telegram.botTokenLabel' => 'Bot token',
+			'channels.kinds.telegram.botTokenHint' => 'From @BotFather. Stored in channel config; admin-only API.',
+			'channels.kinds.telegram.chatIdLabel' => 'Default chat ID',
+			'channels.kinds.telegram.chatIdPlaceholder' => '42 (optional — used when no ReplyCtx)',
+			'channels.kinds.slack.description' => 'Socket Mode — no public webhook needed. Requires a bot OAuth token (xoxb-) and an app-level token (xapp-) with connections:write.',
+			'channels.kinds.slack.botTokenLabel' => 'Bot token (xoxb-…)',
+			'channels.kinds.slack.botTokenHint' => 'OAuth & Permissions → Bot User OAuth Token. Needs chat:write.',
+			'channels.kinds.slack.appTokenLabel' => 'App-level token (xapp-…)',
+			'channels.kinds.slack.appTokenHint' => 'Settings → Basic Information → App-Level Tokens. Scope: connections:write.',
+			'channels.kinds.slack.channelIdLabel' => 'Default channel ID',
+			'channels.kinds.slack.channelIdPlaceholder' => 'C0123ABC456 (optional)',
+			'channels.kinds.discord.description' => 'Bot via Discord Developer Portal with MESSAGE CONTENT INTENT enabled. Connects to Gateway WS — no public URL required.',
+			'channels.kinds.discord.botTokenLabel' => 'Bot token',
+			'channels.kinds.discord.botTokenPlaceholder' => 'Bot token from Discord Developer Portal',
+			'channels.kinds.discord.botTokenHint' => 'Application → Bot → Reset Token. Invite bot with send_messages + embed_links.',
+			'channels.kinds.discord.channelIdLabel' => 'Default channel ID',
+			'channels.kinds.discord.channelIdPlaceholder' => '123456789012345678 (optional)',
+			'channels.kinds.feishu.description' => 'App-level credentials. Uses event subscription webhook for inbound. Public webhook URL is generated below — paste it into the Feishu dev console.',
+			_ => null,
+		} ?? switch (path) {
+			'channels.kinds.feishu.afterCreateHint' => 'Open the webhook URL from the channel card and paste it into Feishu Open Platform → Event Subscriptions → Request URL.',
+			'channels.kinds.feishu.appIdLabel' => 'App ID',
+			'channels.kinds.feishu.appSecretLabel' => 'App secret',
+			'channels.kinds.feishu.appSecretPlaceholder' => 'Application credential secret',
+			'channels.kinds.feishu.verificationTokenLabel' => 'Verification token',
+			'channels.kinds.feishu.verificationTokenHint' => 'From Event Subscriptions → Verification Token. When set, opendray rejects webhooks with a different token.',
+			'channels.kinds.feishu.chatIdLabel' => 'Default chat ID (oc_…)',
+			'channels.kinds.feishu.chatIdPlaceholder' => 'oc_xxxxxxxxxx (optional)',
+			'channels.kinds.dingtalk.description' => 'Custom group robot. Outbound only. Group chat → Robots → Add → Sign mode → copy webhook + secret.',
+			'channels.kinds.dingtalk.webhookUrlLabel' => 'Webhook URL',
+			'channels.kinds.dingtalk.secretLabel' => 'Sign secret',
+			'channels.kinds.dingtalk.secretHint' => 'When the robot is set to "Sign" security mode, copy the secret here. opendray adds the timestamp + sign params automatically.',
+			'channels.kinds.wecom.description' => 'Group robot webhook. Outbound only (text + markdown). Group settings → Group robots → Add → copy webhook URL.',
+			'channels.kinds.wecom.webhookKeyLabel' => 'Webhook key',
+			'channels.kinds.wecom.webhookKeyPlaceholder' => 'The "key=" query value',
+			'channels.kinds.wecom.webhookKeyHint' => 'Or paste the whole webhook URL into the field below — either is enough.',
+			'channels.kinds.wecom.webhookUrlLabel' => 'Or full webhook URL',
+			'channels.kinds.wechat.description' => 'Push to personal WeChat via WxPusher. Outbound-only — push services do not relay user replies. Each recipient subscribes once via QR code.',
+			'channels.kinds.wechat.appTokenLabel' => 'App token (AT_…)',
+			'channels.kinds.wechat.appTokenHint' => 'WxPusher → 应用管理 → 创建应用 → 复制 App Token.',
+			'channels.kinds.wechat.uidsLabel' => 'Recipient UIDs (one per line)',
+			'channels.kinds.wechat.uidsHint' => 'Either UIDs or topic IDs is required.',
+			'channels.kinds.wechat.topicIdsLabel' => 'Topic IDs (one per line)',
+			'channels.kinds.wechat.urlLabel' => 'Tap-through URL',
+			'channels.kinds.wechat.urlHint' => 'When set, tapping the WeChat notification opens this page.',
 			'onboarding.gatewayLabel' => 'Gateway URL',
 			'onboarding.gatewayHint' => 'https://opendray.example.com',
 			'onboarding.kContinue' => 'Continue',
@@ -3236,8 +3923,6 @@ extension on Translations {
 			'settings.changeCredentials.currentPassword' => 'Current password',
 			'settings.changeCredentials.newUsername' => 'New username',
 			'settings.changeCredentials.newPassword' => 'New password',
-			_ => null,
-		} ?? switch (path) {
 			'settings.changeCredentials.confirmPassword' => 'Confirm new password',
 			'settings.changeCredentials.validatorRequired' => 'Required',
 			'settings.changeCredentials.passwordHelper' => 'At least 8 characters',

@@ -321,13 +321,68 @@
     "errorWithMessage": "{prefix}: {error}",
     "editor": {
       "nameHint": "my-mcp-server",
-      "jsonHint": "JSON config — name, transport: stdio, command, args…"
+      "jsonHint": "JSON config — name, transport: stdio, command, args…",
+      "descriptionPlaceholder": "Optional one-liner",
+      "validateJsonObject": "Body must be a JSON object",
+      "validateJsonInvalid": "Invalid JSON: {error}",
+      "appBarEdit": "Edit MCP server",
+      "appBarNew": "New MCP server",
+      "idLockedHint": "Locked in edit mode — delete + recreate to change.",
+      "jsonLabel": "Server JSON",
+      "jsonSchemaHelp": "Schema: transport must be stdio, http or sse. For stdio set command + args. For http/sse set url + headers. Use \\$secret:KEY to reference vault secrets.",
+      "idLabel": "id (URL segment, lowercase alphanumeric / dash / underscore)",
+      "idRequired": "id is required",
+      "saving": "Saving…",
+      "save": "Save",
+      "create": "Create"
     },
     "secret": {
       "keyLabel": "Key",
       "keyHint": "GITHUB_TOKEN, OPENAI_KEY, …",
-      "valueLabel": "Value"
-    }
+      "valueLabel": "Value",
+      "keyRequired": "Key is required.",
+      "keyInvalid": "Key must match [A-Za-z_][A-Za-z0-9_]* — same rules as a shell env var.",
+      "valueRequired": "Value is required.",
+      "replaceTitle": "Replace secret value",
+      "addTitle": "Add secret",
+      "saveButton": "Save",
+      "addButton": "Add",
+      "helpRules": "Shell-env-var rules: starts with a letter or _, then letters / digits / _ only.",
+      "replaceHint": "Paste new value (the previous one is wiped)",
+      "addHint": "Paste secret value",
+      "addedSnack": "Secret {key} added.",
+      "updatedSnack": "Secret {key} updated.",
+      "deletedSnack": "Deleted {key}.",
+      "deleteBody": "Removes the value from the encrypted vault. Any MCP server that references it will fail until restored."
+    },
+    "popup": {
+      "editConfigSubtitle": "Full JSON editor — vault-backed servers only",
+      "viewRawSubtitle": "Read-only inspector for the server JSON",
+      "deleteLabel": "Delete"
+    },
+    "kv": {
+      "transport": "Transport",
+      "description": "Description",
+      "command": "Command",
+      "args": "Args",
+      "headers": "Headers"
+    },
+    "deleteServerBody": "Removes the vault directory for {id}. Sessions that reference this server stop being able to spawn it.",
+    "deleteServerSnack": "Deleted {id}.",
+    "serversCount": "Servers ({count})",
+    "secretsCount": "Secrets ({count})",
+    "emptyServers": "No MCP servers registered. Tap \"New server\" to add one.",
+    "emptySecrets": "No secrets stored. Add one to feed sensitive env / headers into MCP servers without putting them in the JSON.",
+    "noVaultFileYet": "No vault file yet — added secrets create it.",
+    "tapToReplaceHint": "Tap to replace · long-press / trash to delete",
+    "failedToLoad": "Failed to load MCP state",
+    "serverCreatedSnack": "MCP server created.",
+    "serverUpdatedSnack": "MCP server updated.",
+    "envHeading": "Env",
+    "encryptionAes": "AES-GCM encrypted (key in OS keychain)",
+    "encryptionPlaintext": "PLAINTEXT — keychain unavailable",
+    "toggleEnabledSnack": "{name} enabled.",
+    "toggleDisabledSnack": "{name} disabled."
   },
   "providers": {
     "title": "Providers",
@@ -552,7 +607,115 @@
       "repeatPolicy": "Repeat policy",
       "cooldownWindow": "Cooldown window",
       "includeSnippet": "Include terminal snippet",
-      "snippetLengthCap": "Snippet length cap"
+      "snippetLengthCap": "Snippet length cap",
+      "notifyOnAll": "All session events.",
+      "notifyOnEmpty": "No events selected — outbound notifications muted.",
+      "snippetHelper": "Embeds the recent terminal tail in each notification.",
+      "snippetNoCap": "no cap",
+      "snippetChars": "{n} chars",
+      "updatedSnack": "Notification preferences updated.",
+      "modes": {
+        "onceLabel": "Once per session",
+        "onceDescription": "Fire once when idle, stay silent until reply or end.",
+        "cooldownLabel": "Time-window cooldown",
+        "cooldownDescription": "Suppress repeats within the chosen window.",
+        "everyLabel": "Every event (noisy)",
+        "everyDescription": "No suppression — only for low-frequency channels."
+      }
+    },
+    "popup": {
+      "enable": "Enable",
+      "disable": "Disable",
+      "mute": "Mute",
+      "unmute": "Unmute",
+      "deleteLabel": "Delete"
+    },
+    "badges": {
+      "running": "running",
+      "starting": "starting…",
+      "disabled": "disabled",
+      "muted": "muted"
+    },
+    "capsLabel": "· caps: {list}",
+    "bridgeWebOnly": "Bridge channels stay web-only",
+    "bridgeEmptyAdd": "Add one from the web admin: Channels → New.",
+    "deleteBody": "Stops the channel and removes its configuration. In-flight notifications addressed to it will be dropped silently.",
+    "snacks": {
+      "testDispatched": "Test message dispatched.",
+      "channelEnabled": "Channel enabled.",
+      "channelDisabled": "Channel disabled.",
+      "channelMuted": "Channel muted.",
+      "channelUnmuted": "Channel unmuted.",
+      "configUpdated": "Channel config updated.",
+      "channelDeleted": "Channel deleted."
+    },
+    "errorPrefix": {
+      "test": "Test failed",
+      "toggle": "Toggle failed",
+      "muteToggle": "Mute toggle failed",
+      "update": "Update failed",
+      "delete": "Delete failed"
+    },
+    "failedToLoad": "Failed to load channels",
+    "kinds": {
+      "telegram": {
+        "description": "Bot via @BotFather. opendray long-polls getUpdates and sends via REST. Buttons + reply_to_message work natively.",
+        "botTokenLabel": "Bot token",
+        "botTokenHint": "From @BotFather. Stored in channel config; admin-only API.",
+        "chatIdLabel": "Default chat ID",
+        "chatIdPlaceholder": "42 (optional — used when no ReplyCtx)"
+      },
+      "slack": {
+        "description": "Socket Mode — no public webhook needed. Requires a bot OAuth token (xoxb-) and an app-level token (xapp-) with connections:write.",
+        "botTokenLabel": "Bot token (xoxb-…)",
+        "botTokenHint": "OAuth & Permissions → Bot User OAuth Token. Needs chat:write.",
+        "appTokenLabel": "App-level token (xapp-…)",
+        "appTokenHint": "Settings → Basic Information → App-Level Tokens. Scope: connections:write.",
+        "channelIdLabel": "Default channel ID",
+        "channelIdPlaceholder": "C0123ABC456 (optional)"
+      },
+      "discord": {
+        "description": "Bot via Discord Developer Portal with MESSAGE CONTENT INTENT enabled. Connects to Gateway WS — no public URL required.",
+        "botTokenLabel": "Bot token",
+        "botTokenPlaceholder": "Bot token from Discord Developer Portal",
+        "botTokenHint": "Application → Bot → Reset Token. Invite bot with send_messages + embed_links.",
+        "channelIdLabel": "Default channel ID",
+        "channelIdPlaceholder": "123456789012345678 (optional)"
+      },
+      "feishu": {
+        "description": "App-level credentials. Uses event subscription webhook for inbound. Public webhook URL is generated below — paste it into the Feishu dev console.",
+        "afterCreateHint": "Open the webhook URL from the channel card and paste it into Feishu Open Platform → Event Subscriptions → Request URL.",
+        "appIdLabel": "App ID",
+        "appSecretLabel": "App secret",
+        "appSecretPlaceholder": "Application credential secret",
+        "verificationTokenLabel": "Verification token",
+        "verificationTokenHint": "From Event Subscriptions → Verification Token. When set, opendray rejects webhooks with a different token.",
+        "chatIdLabel": "Default chat ID (oc_…)",
+        "chatIdPlaceholder": "oc_xxxxxxxxxx (optional)"
+      },
+      "dingtalk": {
+        "description": "Custom group robot. Outbound only. Group chat → Robots → Add → Sign mode → copy webhook + secret.",
+        "webhookUrlLabel": "Webhook URL",
+        "secretLabel": "Sign secret",
+        "secretHint": "When the robot is set to \"Sign\" security mode, copy the secret here. opendray adds the timestamp + sign params automatically."
+      },
+      "wecom": {
+        "description": "Group robot webhook. Outbound only (text + markdown). Group settings → Group robots → Add → copy webhook URL.",
+        "webhookKeyLabel": "Webhook key",
+        "webhookKeyPlaceholder": "The \"key=\" query value",
+        "webhookKeyHint": "Or paste the whole webhook URL into the field below — either is enough.",
+        "webhookUrlLabel": "Or full webhook URL"
+      },
+      "wechat": {
+        "description": "Push to personal WeChat via WxPusher. Outbound-only — push services do not relay user replies. Each recipient subscribes once via QR code.",
+        "appTokenLabel": "App token (AT_…)",
+        "appTokenHint": "WxPusher → 应用管理 → 创建应用 → 复制 App Token.",
+        "uidsLabel": "Recipient UIDs (one per line)",
+        "uidsHint": "Either UIDs or topic IDs is required.",
+        "topicIdsLabel": "Topic IDs (one per line)",
+        "urlLabel": "Tap-through URL",
+        "urlHint": "When set, tapping the WeChat notification opens this page."
+      }
     }
   },
   "onboarding": {

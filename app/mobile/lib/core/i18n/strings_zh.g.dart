@@ -173,6 +173,24 @@ class _TranslationsMcpZh extends TranslationsMcpEn {
 	@override String errorWithMessage({required Object prefix, required Object error}) => '${prefix}：${error}';
 	@override late final _TranslationsMcpEditorZh editor = _TranslationsMcpEditorZh._(_root);
 	@override late final _TranslationsMcpSecretZh secret = _TranslationsMcpSecretZh._(_root);
+	@override late final _TranslationsMcpPopupZh popup = _TranslationsMcpPopupZh._(_root);
+	@override late final _TranslationsMcpKvZh kv = _TranslationsMcpKvZh._(_root);
+	@override String deleteServerBody({required Object id}) => '移除 ${id} 的密钥库目录。引用此服务器的会话将无法启动。';
+	@override String deleteServerSnack({required Object id}) => '已删除 ${id}。';
+	@override String serversCount({required Object count}) => '服务器（${count}）';
+	@override String secretsCount({required Object count}) => '密钥（${count}）';
+	@override String get emptyServers => '未注册任何 MCP 服务器。点击「新建服务器」添加一个。';
+	@override String get emptySecrets => '暂无密钥。添加一个，将敏感的 env / headers 注入 MCP 服务器，无需放在 JSON 里。';
+	@override String get noVaultFileYet => '尚无密钥库文件 — 添加密钥时会创建。';
+	@override String get tapToReplaceHint => '点击替换 · 长按 / 垃圾桶 删除';
+	@override String get failedToLoad => '加载 MCP 状态失败';
+	@override String get serverCreatedSnack => 'MCP 服务器已创建。';
+	@override String get serverUpdatedSnack => 'MCP 服务器已更新。';
+	@override String get envHeading => '环境变量';
+	@override String get encryptionAes => 'AES-GCM 加密（密钥存于 OS keychain）';
+	@override String get encryptionPlaintext => '明文 — keychain 不可用';
+	@override String toggleEnabledSnack({required Object name}) => '${name} 已启用。';
+	@override String toggleDisabledSnack({required Object name}) => '${name} 已停用。';
 }
 
 // Path: providers
@@ -419,6 +437,16 @@ class _TranslationsChannelsZh extends TranslationsChannelsEn {
 	@override late final _TranslationsChannelsWebhookDialogZh webhookDialog = _TranslationsChannelsWebhookDialogZh._(_root);
 	@override String errorWithMessage({required Object prefix, required Object error}) => '${prefix}：${error}';
 	@override late final _TranslationsChannelsNotificationsZh notifications = _TranslationsChannelsNotificationsZh._(_root);
+	@override late final _TranslationsChannelsPopupZh popup = _TranslationsChannelsPopupZh._(_root);
+	@override late final _TranslationsChannelsBadgesZh badges = _TranslationsChannelsBadgesZh._(_root);
+	@override String capsLabel({required Object list}) => '· 能力：${list}';
+	@override String get bridgeWebOnly => 'Bridge 通道仅 Web 端';
+	@override String get bridgeEmptyAdd => '在 Web 管理端添加：通道 → 新建。';
+	@override String get deleteBody => '停止该通道并移除其配置。仍在传输中的通知会被静默丢弃。';
+	@override late final _TranslationsChannelsSnacksZh snacks = _TranslationsChannelsSnacksZh._(_root);
+	@override late final _TranslationsChannelsErrorPrefixZh errorPrefix = _TranslationsChannelsErrorPrefixZh._(_root);
+	@override String get failedToLoad => '加载通道失败';
+	@override late final _TranslationsChannelsKindsZh kinds = _TranslationsChannelsKindsZh._(_root);
 }
 
 // Path: onboarding
@@ -786,6 +814,19 @@ class _TranslationsMcpEditorZh extends TranslationsMcpEditorEn {
 	// Translations
 	@override String get nameHint => 'my-mcp-server';
 	@override String get jsonHint => 'JSON 配置 — name、transport: stdio、command、args…';
+	@override String get descriptionPlaceholder => '可选的一行说明';
+	@override String get validateJsonObject => '正文必须是 JSON 对象';
+	@override String validateJsonInvalid({required Object error}) => '无效的 JSON：${error}';
+	@override String get appBarEdit => '编辑 MCP 服务器';
+	@override String get appBarNew => '新建 MCP 服务器';
+	@override String get idLockedHint => '编辑模式下锁定 — 需删除后重建以更改。';
+	@override String get jsonLabel => '服务器 JSON';
+	@override String get jsonSchemaHelp => 'Schema：transport 必须是 stdio、http 或 sse。stdio 需要 command + args。http/sse 需要 url + headers。用 \$secret:KEY 引用密钥库的密钥。';
+	@override String get idLabel => 'id（URL 片段，小写字母数字 / 横线 / 下划线）';
+	@override String get idRequired => 'id 必填';
+	@override String get saving => '保存中…';
+	@override String get save => '保存';
+	@override String get create => '创建';
 }
 
 // Path: mcp.secret
@@ -798,6 +839,46 @@ class _TranslationsMcpSecretZh extends TranslationsMcpSecretEn {
 	@override String get keyLabel => '键';
 	@override String get keyHint => 'GITHUB_TOKEN、OPENAI_KEY、…';
 	@override String get valueLabel => '值';
+	@override String get keyRequired => '必须填写键。';
+	@override String get keyInvalid => '键必须匹配 [A-Za-z_][A-Za-z0-9_]* — 与 shell 环境变量规则相同。';
+	@override String get valueRequired => '必须填写值。';
+	@override String get replaceTitle => '替换密钥值';
+	@override String get addTitle => '添加密钥';
+	@override String get saveButton => '保存';
+	@override String get addButton => '添加';
+	@override String get helpRules => 'shell 环境变量规则：字母或 _ 开头，仅含字母 / 数字 / _。';
+	@override String get replaceHint => '粘贴新值（旧值被擦除）';
+	@override String get addHint => '粘贴密钥值';
+	@override String addedSnack({required Object key}) => '已添加密钥 ${key}。';
+	@override String updatedSnack({required Object key}) => '已更新密钥 ${key}。';
+	@override String deletedSnack({required Object key}) => '已删除 ${key}。';
+	@override String get deleteBody => '从加密的密钥库中移除该值。引用此密钥的 MCP 服务器在恢复前将无法启动。';
+}
+
+// Path: mcp.popup
+class _TranslationsMcpPopupZh extends TranslationsMcpPopupEn {
+	_TranslationsMcpPopupZh._(TranslationsZh root) : this._root = root, super.internal(root);
+
+	final TranslationsZh _root; // ignore: unused_field
+
+	// Translations
+	@override String get editConfigSubtitle => '完整 JSON 编辑器 — 仅限密钥库支持的服务器';
+	@override String get viewRawSubtitle => '服务器 JSON 的只读查看器';
+	@override String get deleteLabel => '删除';
+}
+
+// Path: mcp.kv
+class _TranslationsMcpKvZh extends TranslationsMcpKvEn {
+	_TranslationsMcpKvZh._(TranslationsZh root) : this._root = root, super.internal(root);
+
+	final TranslationsZh _root; // ignore: unused_field
+
+	// Translations
+	@override String get transport => '传输';
+	@override String get description => '描述';
+	@override String get command => '命令';
+	@override String get args => '参数';
+	@override String get headers => 'Headers';
 }
 
 // Path: providers.errorPrefix
@@ -915,6 +996,86 @@ class _TranslationsChannelsNotificationsZh extends TranslationsChannelsNotificat
 	@override String get cooldownWindow => '冷却时间';
 	@override String get includeSnippet => '包含终端片段';
 	@override String get snippetLengthCap => '片段长度上限';
+	@override String get notifyOnAll => '所有会话事件。';
+	@override String get notifyOnEmpty => '未选择事件 — 已静音外发通知。';
+	@override String get snippetHelper => '在每条通知中嵌入终端最近的内容。';
+	@override String get snippetNoCap => '无上限';
+	@override String snippetChars({required Object n}) => '${n} 字符';
+	@override String get updatedSnack => '通知偏好已更新。';
+	@override late final _TranslationsChannelsNotificationsModesZh modes = _TranslationsChannelsNotificationsModesZh._(_root);
+}
+
+// Path: channels.popup
+class _TranslationsChannelsPopupZh extends TranslationsChannelsPopupEn {
+	_TranslationsChannelsPopupZh._(TranslationsZh root) : this._root = root, super.internal(root);
+
+	final TranslationsZh _root; // ignore: unused_field
+
+	// Translations
+	@override String get enable => '启用';
+	@override String get disable => '停用';
+	@override String get mute => '静音';
+	@override String get unmute => '取消静音';
+	@override String get deleteLabel => '删除';
+}
+
+// Path: channels.badges
+class _TranslationsChannelsBadgesZh extends TranslationsChannelsBadgesEn {
+	_TranslationsChannelsBadgesZh._(TranslationsZh root) : this._root = root, super.internal(root);
+
+	final TranslationsZh _root; // ignore: unused_field
+
+	// Translations
+	@override String get running => '运行中';
+	@override String get starting => '启动中…';
+	@override String get disabled => '已停用';
+	@override String get muted => '已静音';
+}
+
+// Path: channels.snacks
+class _TranslationsChannelsSnacksZh extends TranslationsChannelsSnacksEn {
+	_TranslationsChannelsSnacksZh._(TranslationsZh root) : this._root = root, super.internal(root);
+
+	final TranslationsZh _root; // ignore: unused_field
+
+	// Translations
+	@override String get testDispatched => '测试消息已发送。';
+	@override String get channelEnabled => '通道已启用。';
+	@override String get channelDisabled => '通道已停用。';
+	@override String get channelMuted => '通道已静音。';
+	@override String get channelUnmuted => '通道已取消静音。';
+	@override String get configUpdated => '通道配置已更新。';
+	@override String get channelDeleted => '通道已删除。';
+}
+
+// Path: channels.errorPrefix
+class _TranslationsChannelsErrorPrefixZh extends TranslationsChannelsErrorPrefixEn {
+	_TranslationsChannelsErrorPrefixZh._(TranslationsZh root) : this._root = root, super.internal(root);
+
+	final TranslationsZh _root; // ignore: unused_field
+
+	// Translations
+	@override String get test => '测试失败';
+	@override String get toggle => '切换失败';
+	@override String get muteToggle => '静音切换失败';
+	@override String get update => '更新失败';
+	@override String get delete => '删除失败';
+}
+
+// Path: channels.kinds
+class _TranslationsChannelsKindsZh extends TranslationsChannelsKindsEn {
+	_TranslationsChannelsKindsZh._(TranslationsZh root) : this._root = root, super.internal(root);
+
+	final TranslationsZh _root; // ignore: unused_field
+
+	// Translations
+	@override late final _TranslationsChannelsKindsTelegramZh telegram = _TranslationsChannelsKindsTelegramZh._(_root);
+	@override late final _TranslationsChannelsKindsSlackZh slack = _TranslationsChannelsKindsSlackZh._(_root);
+	@override late final _TranslationsChannelsKindsDiscordZh discord = _TranslationsChannelsKindsDiscordZh._(_root);
+	@override late final _TranslationsChannelsKindsFeishuZh feishu = _TranslationsChannelsKindsFeishuZh._(_root);
+	@override late final _TranslationsChannelsKindsDingtalkZh dingtalk = _TranslationsChannelsKindsDingtalkZh._(_root);
+	@override late final _TranslationsChannelsKindsWecomZh wecom = _TranslationsChannelsKindsWecomZh._(_root);
+	@override late final _TranslationsChannelsKindsWechatZh wechat = _TranslationsChannelsKindsWechatZh._(_root);
 }
 
 // Path: notesPage.editor
@@ -1544,6 +1705,128 @@ class _TranslationsMemoryWorkersTasksTranscriptZh extends TranslationsMemoryWork
 	@override String get description => '会话结束时的「agent 做了什么」摘要。天然适合 agent 工作器。';
 }
 
+// Path: channels.notifications.modes
+class _TranslationsChannelsNotificationsModesZh extends TranslationsChannelsNotificationsModesEn {
+	_TranslationsChannelsNotificationsModesZh._(TranslationsZh root) : this._root = root, super.internal(root);
+
+	final TranslationsZh _root; // ignore: unused_field
+
+	// Translations
+	@override String get onceLabel => '每会话一次';
+	@override String get onceDescription => '空闲时触发一次，回复或结束前不再触发。';
+	@override String get cooldownLabel => '时间窗冷却';
+	@override String get cooldownDescription => '在所选时间窗内抑制重复。';
+	@override String get everyLabel => '每次事件（嘈杂）';
+	@override String get everyDescription => '不抑制 — 仅适合低频通道。';
+}
+
+// Path: channels.kinds.telegram
+class _TranslationsChannelsKindsTelegramZh extends TranslationsChannelsKindsTelegramEn {
+	_TranslationsChannelsKindsTelegramZh._(TranslationsZh root) : this._root = root, super.internal(root);
+
+	final TranslationsZh _root; // ignore: unused_field
+
+	// Translations
+	@override String get description => '通过 @BotFather 创建机器人。opendray 长轮询 getUpdates 并通过 REST 发送。原生支持按钮和 reply_to_message。';
+	@override String get botTokenLabel => '机器人 Token';
+	@override String get botTokenHint => '从 @BotFather 获取。存储于通道配置；仅管理员 API 可见。';
+	@override String get chatIdLabel => '默认 chat ID';
+	@override String get chatIdPlaceholder => '42（可选 — 没有 ReplyCtx 时使用）';
+}
+
+// Path: channels.kinds.slack
+class _TranslationsChannelsKindsSlackZh extends TranslationsChannelsKindsSlackEn {
+	_TranslationsChannelsKindsSlackZh._(TranslationsZh root) : this._root = root, super.internal(root);
+
+	final TranslationsZh _root; // ignore: unused_field
+
+	// Translations
+	@override String get description => 'Socket Mode — 无需公网 webhook。需要 bot OAuth token（xoxb-）和带 connections:write 的 app-level token（xapp-）。';
+	@override String get botTokenLabel => 'Bot token（xoxb-…）';
+	@override String get botTokenHint => 'OAuth & Permissions → Bot User OAuth Token。需要 chat:write。';
+	@override String get appTokenLabel => 'App-level token（xapp-…）';
+	@override String get appTokenHint => 'Settings → Basic Information → App-Level Tokens。范围：connections:write。';
+	@override String get channelIdLabel => '默认 channel ID';
+	@override String get channelIdPlaceholder => 'C0123ABC456（可选）';
+}
+
+// Path: channels.kinds.discord
+class _TranslationsChannelsKindsDiscordZh extends TranslationsChannelsKindsDiscordEn {
+	_TranslationsChannelsKindsDiscordZh._(TranslationsZh root) : this._root = root, super.internal(root);
+
+	final TranslationsZh _root; // ignore: unused_field
+
+	// Translations
+	@override String get description => '通过 Discord Developer Portal 创建机器人，启用 MESSAGE CONTENT INTENT。连接 Gateway WS — 无需公网 URL。';
+	@override String get botTokenLabel => 'Bot token';
+	@override String get botTokenPlaceholder => '来自 Discord Developer Portal 的 Bot token';
+	@override String get botTokenHint => 'Application → Bot → Reset Token。邀请机器人时勾选 send_messages + embed_links。';
+	@override String get channelIdLabel => '默认 channel ID';
+	@override String get channelIdPlaceholder => '123456789012345678（可选）';
+}
+
+// Path: channels.kinds.feishu
+class _TranslationsChannelsKindsFeishuZh extends TranslationsChannelsKindsFeishuEn {
+	_TranslationsChannelsKindsFeishuZh._(TranslationsZh root) : this._root = root, super.internal(root);
+
+	final TranslationsZh _root; // ignore: unused_field
+
+	// Translations
+	@override String get description => '应用级凭据。入站走事件订阅 webhook。下方生成公网 webhook URL — 粘贴到飞书开放平台控制台。';
+	@override String get afterCreateHint => '在通道卡上打开 webhook URL，粘贴到飞书开放平台 → 事件订阅 → Request URL。';
+	@override String get appIdLabel => 'App ID';
+	@override String get appSecretLabel => 'App secret';
+	@override String get appSecretPlaceholder => '应用凭据 secret';
+	@override String get verificationTokenLabel => 'Verification token';
+	@override String get verificationTokenHint => '来自 事件订阅 → Verification Token。设置后，opendray 拒绝 token 不匹配的 webhook。';
+	@override String get chatIdLabel => '默认 chat ID（oc_…）';
+	@override String get chatIdPlaceholder => 'oc_xxxxxxxxxx（可选）';
+}
+
+// Path: channels.kinds.dingtalk
+class _TranslationsChannelsKindsDingtalkZh extends TranslationsChannelsKindsDingtalkEn {
+	_TranslationsChannelsKindsDingtalkZh._(TranslationsZh root) : this._root = root, super.internal(root);
+
+	final TranslationsZh _root; // ignore: unused_field
+
+	// Translations
+	@override String get description => '自定义群机器人。仅外发。群聊 → 机器人 → 添加 → 加签模式 → 复制 webhook + secret。';
+	@override String get webhookUrlLabel => 'Webhook URL';
+	@override String get secretLabel => '加签 secret';
+	@override String get secretHint => '当机器人为「加签」安全模式时，将 secret 复制到这里。opendray 自动添加 timestamp + sign 参数。';
+}
+
+// Path: channels.kinds.wecom
+class _TranslationsChannelsKindsWecomZh extends TranslationsChannelsKindsWecomEn {
+	_TranslationsChannelsKindsWecomZh._(TranslationsZh root) : this._root = root, super.internal(root);
+
+	final TranslationsZh _root; // ignore: unused_field
+
+	// Translations
+	@override String get description => '群机器人 webhook。仅外发（文本 + markdown）。群设置 → 群机器人 → 添加 → 复制 webhook URL。';
+	@override String get webhookKeyLabel => 'Webhook key';
+	@override String get webhookKeyPlaceholder => '「key=」查询参数值';
+	@override String get webhookKeyHint => '或将整个 webhook URL 粘贴到下方字段 — 任一即可。';
+	@override String get webhookUrlLabel => '或完整 webhook URL';
+}
+
+// Path: channels.kinds.wechat
+class _TranslationsChannelsKindsWechatZh extends TranslationsChannelsKindsWechatEn {
+	_TranslationsChannelsKindsWechatZh._(TranslationsZh root) : this._root = root, super.internal(root);
+
+	final TranslationsZh _root; // ignore: unused_field
+
+	// Translations
+	@override String get description => '通过 WxPusher 推送到个人微信。仅外发 — 推送服务不转发用户回复。每个接收方需通过二维码订阅一次。';
+	@override String get appTokenLabel => 'App token（AT_…）';
+	@override String get appTokenHint => 'WxPusher → 应用管理 → 创建应用 → 复制 App Token。';
+	@override String get uidsLabel => '接收方 UID（每行一个）';
+	@override String get uidsHint => 'UID 或 topic ID 至少需要一个。';
+	@override String get topicIdsLabel => 'Topic ID（每行一个）';
+	@override String get urlLabel => '点击跳转 URL';
+	@override String get urlHint => '设置后，点击微信通知会打开此页面。';
+}
+
 // Path: settings.logViewer.levels
 class _TranslationsSettingsLogViewerLevelsZh extends TranslationsSettingsLogViewerLevelsEn {
 	_TranslationsSettingsLogViewerLevelsZh._(TranslationsZh root) : this._root = root, super.internal(root);
@@ -1822,9 +2105,60 @@ extension on TranslationsZh {
 			'mcp.errorWithMessage' => ({required Object prefix, required Object error}) => '${prefix}：${error}',
 			'mcp.editor.nameHint' => 'my-mcp-server',
 			'mcp.editor.jsonHint' => 'JSON 配置 — name、transport: stdio、command、args…',
+			'mcp.editor.descriptionPlaceholder' => '可选的一行说明',
+			'mcp.editor.validateJsonObject' => '正文必须是 JSON 对象',
+			'mcp.editor.validateJsonInvalid' => ({required Object error}) => '无效的 JSON：${error}',
+			'mcp.editor.appBarEdit' => '编辑 MCP 服务器',
+			'mcp.editor.appBarNew' => '新建 MCP 服务器',
+			'mcp.editor.idLockedHint' => '编辑模式下锁定 — 需删除后重建以更改。',
+			'mcp.editor.jsonLabel' => '服务器 JSON',
+			'mcp.editor.jsonSchemaHelp' => 'Schema：transport 必须是 stdio、http 或 sse。stdio 需要 command + args。http/sse 需要 url + headers。用 \$secret:KEY 引用密钥库的密钥。',
+			'mcp.editor.idLabel' => 'id（URL 片段，小写字母数字 / 横线 / 下划线）',
+			'mcp.editor.idRequired' => 'id 必填',
+			'mcp.editor.saving' => '保存中…',
+			'mcp.editor.save' => '保存',
+			'mcp.editor.create' => '创建',
 			'mcp.secret.keyLabel' => '键',
 			'mcp.secret.keyHint' => 'GITHUB_TOKEN、OPENAI_KEY、…',
 			'mcp.secret.valueLabel' => '值',
+			'mcp.secret.keyRequired' => '必须填写键。',
+			'mcp.secret.keyInvalid' => '键必须匹配 [A-Za-z_][A-Za-z0-9_]* — 与 shell 环境变量规则相同。',
+			'mcp.secret.valueRequired' => '必须填写值。',
+			'mcp.secret.replaceTitle' => '替换密钥值',
+			'mcp.secret.addTitle' => '添加密钥',
+			'mcp.secret.saveButton' => '保存',
+			'mcp.secret.addButton' => '添加',
+			'mcp.secret.helpRules' => 'shell 环境变量规则：字母或 _ 开头，仅含字母 / 数字 / _。',
+			'mcp.secret.replaceHint' => '粘贴新值（旧值被擦除）',
+			'mcp.secret.addHint' => '粘贴密钥值',
+			'mcp.secret.addedSnack' => ({required Object key}) => '已添加密钥 ${key}。',
+			'mcp.secret.updatedSnack' => ({required Object key}) => '已更新密钥 ${key}。',
+			'mcp.secret.deletedSnack' => ({required Object key}) => '已删除 ${key}。',
+			'mcp.secret.deleteBody' => '从加密的密钥库中移除该值。引用此密钥的 MCP 服务器在恢复前将无法启动。',
+			'mcp.popup.editConfigSubtitle' => '完整 JSON 编辑器 — 仅限密钥库支持的服务器',
+			'mcp.popup.viewRawSubtitle' => '服务器 JSON 的只读查看器',
+			'mcp.popup.deleteLabel' => '删除',
+			'mcp.kv.transport' => '传输',
+			'mcp.kv.description' => '描述',
+			'mcp.kv.command' => '命令',
+			'mcp.kv.args' => '参数',
+			'mcp.kv.headers' => 'Headers',
+			'mcp.deleteServerBody' => ({required Object id}) => '移除 ${id} 的密钥库目录。引用此服务器的会话将无法启动。',
+			'mcp.deleteServerSnack' => ({required Object id}) => '已删除 ${id}。',
+			'mcp.serversCount' => ({required Object count}) => '服务器（${count}）',
+			'mcp.secretsCount' => ({required Object count}) => '密钥（${count}）',
+			'mcp.emptyServers' => '未注册任何 MCP 服务器。点击「新建服务器」添加一个。',
+			'mcp.emptySecrets' => '暂无密钥。添加一个，将敏感的 env / headers 注入 MCP 服务器，无需放在 JSON 里。',
+			'mcp.noVaultFileYet' => '尚无密钥库文件 — 添加密钥时会创建。',
+			'mcp.tapToReplaceHint' => '点击替换 · 长按 / 垃圾桶 删除',
+			'mcp.failedToLoad' => '加载 MCP 状态失败',
+			'mcp.serverCreatedSnack' => 'MCP 服务器已创建。',
+			'mcp.serverUpdatedSnack' => 'MCP 服务器已更新。',
+			'mcp.envHeading' => '环境变量',
+			'mcp.encryptionAes' => 'AES-GCM 加密（密钥存于 OS keychain）',
+			'mcp.encryptionPlaintext' => '明文 — keychain 不可用',
+			'mcp.toggleEnabledSnack' => ({required Object name}) => '${name} 已启用。',
+			'mcp.toggleDisabledSnack' => ({required Object name}) => '${name} 已停用。',
 			'providers.title' => '提供商',
 			'providers.configSaved' => '提供商配置已更新。',
 			'providers.saveFailedApi' => ({required Object error}) => '保存失败：${error}',
@@ -2003,6 +2337,90 @@ extension on TranslationsZh {
 			'channels.notifications.cooldownWindow' => '冷却时间',
 			'channels.notifications.includeSnippet' => '包含终端片段',
 			'channels.notifications.snippetLengthCap' => '片段长度上限',
+			'channels.notifications.notifyOnAll' => '所有会话事件。',
+			'channels.notifications.notifyOnEmpty' => '未选择事件 — 已静音外发通知。',
+			'channels.notifications.snippetHelper' => '在每条通知中嵌入终端最近的内容。',
+			'channels.notifications.snippetNoCap' => '无上限',
+			'channels.notifications.snippetChars' => ({required Object n}) => '${n} 字符',
+			'channels.notifications.updatedSnack' => '通知偏好已更新。',
+			'channels.notifications.modes.onceLabel' => '每会话一次',
+			'channels.notifications.modes.onceDescription' => '空闲时触发一次，回复或结束前不再触发。',
+			'channels.notifications.modes.cooldownLabel' => '时间窗冷却',
+			'channels.notifications.modes.cooldownDescription' => '在所选时间窗内抑制重复。',
+			'channels.notifications.modes.everyLabel' => '每次事件（嘈杂）',
+			'channels.notifications.modes.everyDescription' => '不抑制 — 仅适合低频通道。',
+			'channels.popup.enable' => '启用',
+			'channels.popup.disable' => '停用',
+			'channels.popup.mute' => '静音',
+			'channels.popup.unmute' => '取消静音',
+			'channels.popup.deleteLabel' => '删除',
+			'channels.badges.running' => '运行中',
+			'channels.badges.starting' => '启动中…',
+			'channels.badges.disabled' => '已停用',
+			'channels.badges.muted' => '已静音',
+			'channels.capsLabel' => ({required Object list}) => '· 能力：${list}',
+			'channels.bridgeWebOnly' => 'Bridge 通道仅 Web 端',
+			'channels.bridgeEmptyAdd' => '在 Web 管理端添加：通道 → 新建。',
+			'channels.deleteBody' => '停止该通道并移除其配置。仍在传输中的通知会被静默丢弃。',
+			'channels.snacks.testDispatched' => '测试消息已发送。',
+			'channels.snacks.channelEnabled' => '通道已启用。',
+			'channels.snacks.channelDisabled' => '通道已停用。',
+			'channels.snacks.channelMuted' => '通道已静音。',
+			'channels.snacks.channelUnmuted' => '通道已取消静音。',
+			'channels.snacks.configUpdated' => '通道配置已更新。',
+			'channels.snacks.channelDeleted' => '通道已删除。',
+			'channels.errorPrefix.test' => '测试失败',
+			'channels.errorPrefix.toggle' => '切换失败',
+			'channels.errorPrefix.muteToggle' => '静音切换失败',
+			'channels.errorPrefix.update' => '更新失败',
+			'channels.errorPrefix.delete' => '删除失败',
+			'channels.failedToLoad' => '加载通道失败',
+			'channels.kinds.telegram.description' => '通过 @BotFather 创建机器人。opendray 长轮询 getUpdates 并通过 REST 发送。原生支持按钮和 reply_to_message。',
+			'channels.kinds.telegram.botTokenLabel' => '机器人 Token',
+			'channels.kinds.telegram.botTokenHint' => '从 @BotFather 获取。存储于通道配置；仅管理员 API 可见。',
+			'channels.kinds.telegram.chatIdLabel' => '默认 chat ID',
+			'channels.kinds.telegram.chatIdPlaceholder' => '42（可选 — 没有 ReplyCtx 时使用）',
+			'channels.kinds.slack.description' => 'Socket Mode — 无需公网 webhook。需要 bot OAuth token（xoxb-）和带 connections:write 的 app-level token（xapp-）。',
+			'channels.kinds.slack.botTokenLabel' => 'Bot token（xoxb-…）',
+			'channels.kinds.slack.botTokenHint' => 'OAuth & Permissions → Bot User OAuth Token。需要 chat:write。',
+			'channels.kinds.slack.appTokenLabel' => 'App-level token（xapp-…）',
+			'channels.kinds.slack.appTokenHint' => 'Settings → Basic Information → App-Level Tokens。范围：connections:write。',
+			'channels.kinds.slack.channelIdLabel' => '默认 channel ID',
+			'channels.kinds.slack.channelIdPlaceholder' => 'C0123ABC456（可选）',
+			'channels.kinds.discord.description' => '通过 Discord Developer Portal 创建机器人，启用 MESSAGE CONTENT INTENT。连接 Gateway WS — 无需公网 URL。',
+			'channels.kinds.discord.botTokenLabel' => 'Bot token',
+			'channels.kinds.discord.botTokenPlaceholder' => '来自 Discord Developer Portal 的 Bot token',
+			'channels.kinds.discord.botTokenHint' => 'Application → Bot → Reset Token。邀请机器人时勾选 send_messages + embed_links。',
+			'channels.kinds.discord.channelIdLabel' => '默认 channel ID',
+			'channels.kinds.discord.channelIdPlaceholder' => '123456789012345678（可选）',
+			'channels.kinds.feishu.description' => '应用级凭据。入站走事件订阅 webhook。下方生成公网 webhook URL — 粘贴到飞书开放平台控制台。',
+			_ => null,
+		} ?? switch (path) {
+			'channels.kinds.feishu.afterCreateHint' => '在通道卡上打开 webhook URL，粘贴到飞书开放平台 → 事件订阅 → Request URL。',
+			'channels.kinds.feishu.appIdLabel' => 'App ID',
+			'channels.kinds.feishu.appSecretLabel' => 'App secret',
+			'channels.kinds.feishu.appSecretPlaceholder' => '应用凭据 secret',
+			'channels.kinds.feishu.verificationTokenLabel' => 'Verification token',
+			'channels.kinds.feishu.verificationTokenHint' => '来自 事件订阅 → Verification Token。设置后，opendray 拒绝 token 不匹配的 webhook。',
+			'channels.kinds.feishu.chatIdLabel' => '默认 chat ID（oc_…）',
+			'channels.kinds.feishu.chatIdPlaceholder' => 'oc_xxxxxxxxxx（可选）',
+			'channels.kinds.dingtalk.description' => '自定义群机器人。仅外发。群聊 → 机器人 → 添加 → 加签模式 → 复制 webhook + secret。',
+			'channels.kinds.dingtalk.webhookUrlLabel' => 'Webhook URL',
+			'channels.kinds.dingtalk.secretLabel' => '加签 secret',
+			'channels.kinds.dingtalk.secretHint' => '当机器人为「加签」安全模式时，将 secret 复制到这里。opendray 自动添加 timestamp + sign 参数。',
+			'channels.kinds.wecom.description' => '群机器人 webhook。仅外发（文本 + markdown）。群设置 → 群机器人 → 添加 → 复制 webhook URL。',
+			'channels.kinds.wecom.webhookKeyLabel' => 'Webhook key',
+			'channels.kinds.wecom.webhookKeyPlaceholder' => '「key=」查询参数值',
+			'channels.kinds.wecom.webhookKeyHint' => '或将整个 webhook URL 粘贴到下方字段 — 任一即可。',
+			'channels.kinds.wecom.webhookUrlLabel' => '或完整 webhook URL',
+			'channels.kinds.wechat.description' => '通过 WxPusher 推送到个人微信。仅外发 — 推送服务不转发用户回复。每个接收方需通过二维码订阅一次。',
+			'channels.kinds.wechat.appTokenLabel' => 'App token（AT_…）',
+			'channels.kinds.wechat.appTokenHint' => 'WxPusher → 应用管理 → 创建应用 → 复制 App Token。',
+			'channels.kinds.wechat.uidsLabel' => '接收方 UID（每行一个）',
+			'channels.kinds.wechat.uidsHint' => 'UID 或 topic ID 至少需要一个。',
+			'channels.kinds.wechat.topicIdsLabel' => 'Topic ID（每行一个）',
+			'channels.kinds.wechat.urlLabel' => '点击跳转 URL',
+			'channels.kinds.wechat.urlHint' => '设置后，点击微信通知会打开此页面。',
 			'onboarding.gatewayLabel' => '网关 URL',
 			'onboarding.gatewayHint' => 'https://opendray.example.com',
 			'onboarding.kContinue' => '继续',
@@ -2111,8 +2529,6 @@ extension on TranslationsZh {
 			'settings.changeCredentials.currentPassword' => '当前密码',
 			'settings.changeCredentials.newUsername' => '新用户名',
 			'settings.changeCredentials.newPassword' => '新密码',
-			_ => null,
-		} ?? switch (path) {
 			'settings.changeCredentials.confirmPassword' => '确认新密码',
 			'settings.changeCredentials.validatorRequired' => '必填',
 			'settings.changeCredentials.passwordHelper' => '至少 8 个字符',

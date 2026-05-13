@@ -321,13 +321,68 @@
     "errorWithMessage": "{prefix}：{error}",
     "editor": {
       "nameHint": "my-mcp-server",
-      "jsonHint": "JSON 配置 — name、transport: stdio、command、args…"
+      "jsonHint": "JSON 配置 — name、transport: stdio、command、args…",
+      "descriptionPlaceholder": "可选的一行说明",
+      "validateJsonObject": "正文必须是 JSON 对象",
+      "validateJsonInvalid": "无效的 JSON：{error}",
+      "appBarEdit": "编辑 MCP 服务器",
+      "appBarNew": "新建 MCP 服务器",
+      "idLockedHint": "编辑模式下锁定 — 需删除后重建以更改。",
+      "jsonLabel": "服务器 JSON",
+      "jsonSchemaHelp": "Schema：transport 必须是 stdio、http 或 sse。stdio 需要 command + args。http/sse 需要 url + headers。用 \\$secret:KEY 引用密钥库的密钥。",
+      "idLabel": "id（URL 片段，小写字母数字 / 横线 / 下划线）",
+      "idRequired": "id 必填",
+      "saving": "保存中…",
+      "save": "保存",
+      "create": "创建"
     },
     "secret": {
       "keyLabel": "键",
       "keyHint": "GITHUB_TOKEN、OPENAI_KEY、…",
-      "valueLabel": "值"
-    }
+      "valueLabel": "值",
+      "keyRequired": "必须填写键。",
+      "keyInvalid": "键必须匹配 [A-Za-z_][A-Za-z0-9_]* — 与 shell 环境变量规则相同。",
+      "valueRequired": "必须填写值。",
+      "replaceTitle": "替换密钥值",
+      "addTitle": "添加密钥",
+      "saveButton": "保存",
+      "addButton": "添加",
+      "helpRules": "shell 环境变量规则：字母或 _ 开头，仅含字母 / 数字 / _。",
+      "replaceHint": "粘贴新值（旧值被擦除）",
+      "addHint": "粘贴密钥值",
+      "addedSnack": "已添加密钥 {key}。",
+      "updatedSnack": "已更新密钥 {key}。",
+      "deletedSnack": "已删除 {key}。",
+      "deleteBody": "从加密的密钥库中移除该值。引用此密钥的 MCP 服务器在恢复前将无法启动。"
+    },
+    "popup": {
+      "editConfigSubtitle": "完整 JSON 编辑器 — 仅限密钥库支持的服务器",
+      "viewRawSubtitle": "服务器 JSON 的只读查看器",
+      "deleteLabel": "删除"
+    },
+    "kv": {
+      "transport": "传输",
+      "description": "描述",
+      "command": "命令",
+      "args": "参数",
+      "headers": "Headers"
+    },
+    "deleteServerBody": "移除 {id} 的密钥库目录。引用此服务器的会话将无法启动。",
+    "deleteServerSnack": "已删除 {id}。",
+    "serversCount": "服务器（{count}）",
+    "secretsCount": "密钥（{count}）",
+    "emptyServers": "未注册任何 MCP 服务器。点击「新建服务器」添加一个。",
+    "emptySecrets": "暂无密钥。添加一个，将敏感的 env / headers 注入 MCP 服务器，无需放在 JSON 里。",
+    "noVaultFileYet": "尚无密钥库文件 — 添加密钥时会创建。",
+    "tapToReplaceHint": "点击替换 · 长按 / 垃圾桶 删除",
+    "failedToLoad": "加载 MCP 状态失败",
+    "serverCreatedSnack": "MCP 服务器已创建。",
+    "serverUpdatedSnack": "MCP 服务器已更新。",
+    "envHeading": "环境变量",
+    "encryptionAes": "AES-GCM 加密（密钥存于 OS keychain）",
+    "encryptionPlaintext": "明文 — keychain 不可用",
+    "toggleEnabledSnack": "{name} 已启用。",
+    "toggleDisabledSnack": "{name} 已停用。"
   },
   "providers": {
     "title": "提供商",
@@ -552,7 +607,115 @@
       "repeatPolicy": "重复策略",
       "cooldownWindow": "冷却时间",
       "includeSnippet": "包含终端片段",
-      "snippetLengthCap": "片段长度上限"
+      "snippetLengthCap": "片段长度上限",
+      "notifyOnAll": "所有会话事件。",
+      "notifyOnEmpty": "未选择事件 — 已静音外发通知。",
+      "snippetHelper": "在每条通知中嵌入终端最近的内容。",
+      "snippetNoCap": "无上限",
+      "snippetChars": "{n} 字符",
+      "updatedSnack": "通知偏好已更新。",
+      "modes": {
+        "onceLabel": "每会话一次",
+        "onceDescription": "空闲时触发一次，回复或结束前不再触发。",
+        "cooldownLabel": "时间窗冷却",
+        "cooldownDescription": "在所选时间窗内抑制重复。",
+        "everyLabel": "每次事件（嘈杂）",
+        "everyDescription": "不抑制 — 仅适合低频通道。"
+      }
+    },
+    "popup": {
+      "enable": "启用",
+      "disable": "停用",
+      "mute": "静音",
+      "unmute": "取消静音",
+      "deleteLabel": "删除"
+    },
+    "badges": {
+      "running": "运行中",
+      "starting": "启动中…",
+      "disabled": "已停用",
+      "muted": "已静音"
+    },
+    "capsLabel": "· 能力：{list}",
+    "bridgeWebOnly": "Bridge 通道仅 Web 端",
+    "bridgeEmptyAdd": "在 Web 管理端添加：通道 → 新建。",
+    "deleteBody": "停止该通道并移除其配置。仍在传输中的通知会被静默丢弃。",
+    "snacks": {
+      "testDispatched": "测试消息已发送。",
+      "channelEnabled": "通道已启用。",
+      "channelDisabled": "通道已停用。",
+      "channelMuted": "通道已静音。",
+      "channelUnmuted": "通道已取消静音。",
+      "configUpdated": "通道配置已更新。",
+      "channelDeleted": "通道已删除。"
+    },
+    "errorPrefix": {
+      "test": "测试失败",
+      "toggle": "切换失败",
+      "muteToggle": "静音切换失败",
+      "update": "更新失败",
+      "delete": "删除失败"
+    },
+    "failedToLoad": "加载通道失败",
+    "kinds": {
+      "telegram": {
+        "description": "通过 @BotFather 创建机器人。opendray 长轮询 getUpdates 并通过 REST 发送。原生支持按钮和 reply_to_message。",
+        "botTokenLabel": "机器人 Token",
+        "botTokenHint": "从 @BotFather 获取。存储于通道配置；仅管理员 API 可见。",
+        "chatIdLabel": "默认 chat ID",
+        "chatIdPlaceholder": "42（可选 — 没有 ReplyCtx 时使用）"
+      },
+      "slack": {
+        "description": "Socket Mode — 无需公网 webhook。需要 bot OAuth token（xoxb-）和带 connections:write 的 app-level token（xapp-）。",
+        "botTokenLabel": "Bot token（xoxb-…）",
+        "botTokenHint": "OAuth & Permissions → Bot User OAuth Token。需要 chat:write。",
+        "appTokenLabel": "App-level token（xapp-…）",
+        "appTokenHint": "Settings → Basic Information → App-Level Tokens。范围：connections:write。",
+        "channelIdLabel": "默认 channel ID",
+        "channelIdPlaceholder": "C0123ABC456（可选）"
+      },
+      "discord": {
+        "description": "通过 Discord Developer Portal 创建机器人，启用 MESSAGE CONTENT INTENT。连接 Gateway WS — 无需公网 URL。",
+        "botTokenLabel": "Bot token",
+        "botTokenPlaceholder": "来自 Discord Developer Portal 的 Bot token",
+        "botTokenHint": "Application → Bot → Reset Token。邀请机器人时勾选 send_messages + embed_links。",
+        "channelIdLabel": "默认 channel ID",
+        "channelIdPlaceholder": "123456789012345678（可选）"
+      },
+      "feishu": {
+        "description": "应用级凭据。入站走事件订阅 webhook。下方生成公网 webhook URL — 粘贴到飞书开放平台控制台。",
+        "afterCreateHint": "在通道卡上打开 webhook URL，粘贴到飞书开放平台 → 事件订阅 → Request URL。",
+        "appIdLabel": "App ID",
+        "appSecretLabel": "App secret",
+        "appSecretPlaceholder": "应用凭据 secret",
+        "verificationTokenLabel": "Verification token",
+        "verificationTokenHint": "来自 事件订阅 → Verification Token。设置后，opendray 拒绝 token 不匹配的 webhook。",
+        "chatIdLabel": "默认 chat ID（oc_…）",
+        "chatIdPlaceholder": "oc_xxxxxxxxxx（可选）"
+      },
+      "dingtalk": {
+        "description": "自定义群机器人。仅外发。群聊 → 机器人 → 添加 → 加签模式 → 复制 webhook + secret。",
+        "webhookUrlLabel": "Webhook URL",
+        "secretLabel": "加签 secret",
+        "secretHint": "当机器人为「加签」安全模式时，将 secret 复制到这里。opendray 自动添加 timestamp + sign 参数。"
+      },
+      "wecom": {
+        "description": "群机器人 webhook。仅外发（文本 + markdown）。群设置 → 群机器人 → 添加 → 复制 webhook URL。",
+        "webhookKeyLabel": "Webhook key",
+        "webhookKeyPlaceholder": "「key=」查询参数值",
+        "webhookKeyHint": "或将整个 webhook URL 粘贴到下方字段 — 任一即可。",
+        "webhookUrlLabel": "或完整 webhook URL"
+      },
+      "wechat": {
+        "description": "通过 WxPusher 推送到个人微信。仅外发 — 推送服务不转发用户回复。每个接收方需通过二维码订阅一次。",
+        "appTokenLabel": "App token（AT_…）",
+        "appTokenHint": "WxPusher → 应用管理 → 创建应用 → 复制 App Token。",
+        "uidsLabel": "接收方 UID（每行一个）",
+        "uidsHint": "UID 或 topic ID 至少需要一个。",
+        "topicIdsLabel": "Topic ID（每行一个）",
+        "urlLabel": "点击跳转 URL",
+        "urlHint": "设置后，点击微信通知会打开此页面。"
+      }
     }
   },
   "onboarding": {
