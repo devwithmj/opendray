@@ -1217,7 +1217,7 @@
           "value": "Value"
         },
         "editTooltip": "覆盖已存的值",
-        "deleteConfirm": "删除密钥 \"{key}\"? 任何引用 ${'$'}{{key}} 的 mcp.json 在你重新设置之前都会回退到字面占位符。",
+        "deleteConfirm": "删除密钥 \"{key}\"? 任何引用 ${key} 的 mcp.json 在你重新设置之前都会回退到字面占位符。",
         "removedToast": "密钥已移除",
         "deleteFailedToast": "删除失败",
         "editor": {
@@ -2349,7 +2349,8 @@
       "keyboard": {
         "copyBuffer": "复制缓冲",
         "paste": "粘贴",
-        "attachImage": "附加图片"
+        "attachImage": "附加图片",
+        "enter": "回车"
       },
       "connection": {
         "connecting": "连接中…",
