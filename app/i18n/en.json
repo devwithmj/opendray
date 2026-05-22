@@ -965,7 +965,12 @@
         },
         "notInstalled": "not installed",
         "updateAvailable": "update available → {{version}}",
-        "upToDate": "up to date"
+        "upToDate": "up to date",
+        "update": "Update to {{version}}",
+        "updating": "Updating…",
+        "updatedToast": "Updated {{from}} → {{to}}",
+        "alreadyLatestToast": "Already up to date",
+        "updateFailedToast": "Update failed"
       },
       "configForm": {
         "selectPlaceholder": "Select…",
@@ -998,6 +1003,18 @@
         "removeFailedToast": "Remove failed",
         "toggleAria": "Toggle {name}",
         "removeAria": "Remove {name}"
+      },
+      "models": {
+        "title": "Models",
+        "help": "Models offered for this provider. The default is passed to every session via the model flag; sessions can still override it.",
+        "empty": "No models configured yet.",
+        "add": "Add",
+        "addPlaceholder": "model id (e.g. sonnet)",
+        "suggested": "Suggested ({{count}})",
+        "default": "default",
+        "makeDefault": "set default",
+        "setDefault": "Use as the default model",
+        "remove": "Remove {{model}}"
       }
     },
     "channels": {
